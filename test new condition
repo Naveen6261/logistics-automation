@@ -1,0 +1,26 @@
+function draftEmailWithTransporterCheck() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Tracking Data");
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  
+  var activeRow = sheet.getActiveRange().getRow();
+  var transporterName = sheet.getRange(activeRow, TransporterNameCol).getValue();
+  
+  // Get all "R" values from Settings and corresponding column G values
+  var settingsData = settingsSheet.getRange("F13:G36").getValues();
+  var validTransporters = settingsData.filter(row => row[0] === "R").map(row => row[1]);
+  
+  // Check if Transporter Name exists in Sub Status list
+  var includeTransporter = validTransporters.includes(transporterName);
+  
+  var subject = "Tracking Update";
+  var body = "Dear Team,\n\nPlease find the latest tracking update.";
+  
+  if (includeTransporter) {
+    body += "\n\nTransporter Name: " + transporterName;
+  }
+  
+  body += "\n\nBest regards,\nYour Company";
+  
+  var draft = GmailApp.createDraft("recipient@example.com", subject, body);
+  Logger.log("Draft email created successfully.");
+}
