@@ -1,0 +1,18 @@
+function appendTickToSelection() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const range = sheet.getActiveRange();
+  
+  // Get the row of the active cell
+  const activeRow = range.getRow();
+  
+  // Get the value in column H of the active row (column H is the 8th column)
+  const cellValue = sheet.getRange(activeRow, 8).getValue();
+  
+  // If column H has any existing data, append the tick mark
+  if (cellValue) {
+    sheet.getRange(activeRow, 8).setValue(cellValue + " ✓");
+  } else {
+    // If no data in column H, just add the tick mark
+    sheet.getRange(activeRow, 8).setValue("✓");
+  }
+}
