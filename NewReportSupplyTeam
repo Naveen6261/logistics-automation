@@ -1,0 +1,114 @@
+function NewReportSuppyTeam() {
+
+  // assign column numbers to global variables
+  NewAssignHeaderColumnNumbers();
+
+  var sourceSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var activeCell = sourceSheet.getRange("B4");
+  var activeRow = sourceSheet.getActiveCell().getRow();
+  var informedSupplyTeam = sourceSheet.getRange(activeRow, InformedSupplyTeamCol).getValue();
+  var txnNo = sourceSheet.getRange(activeRow, TxnNoCol).getValue();
+  var TXNstatus = sourceSheet.getRange(activeRow, StatusCol).getValue();
+
+  if (informedSupplyTeam !== ""){
+      showMessageBoxOK("Transaction : " + txnNo + " : This is already shared with Supply Team");
+      return;
+  }
+
+  var title = "Transaction : " + txnNo + "," + "\n" +
+            "Row No " + activeRow + "," + String.fromCharCode(10) +
+            "Status : " + TXNstatus;
+
+
+  if (!(ShowMessageBoxYesNo(title, "Do you want to share this with Supply Team?"))){
+         return;
+  }
+  
+
+  //var columnsToAppend = [3,4,5,6,7,8,9,11,12,13,15,16];
+  var columnsToAppend = [3,4,5,6,7,8,24,23,9,10,21,11,12];
+  //	3	4	5	6	7	8	24	23	9	10	21	11	12
+
+  // Get the data from the specified columns in the active row
+  var rowData = columnsToAppend.map(function (col) {
+    return sourceSheet.getRange(activeRow, col).getValue();
+  });
+
+ var destinationSheet = SpreadsheetApp.openById('1ijaZFQZaY-2JTAiLuDnYdvL9YB2I1I9GMFlPSZflKh8').getSheetByName('Reported Vehicles');
+ //var destinationSheet = SpreadsheetApp.openById('1ijaZFQZaY-2JTAiLuDnYdvL9YB2I1I9GMFlPSZflKh8').getSheetByName('Reported Vehicles Test');
+
+var currentLastRow = destinationSheet.getLastRow();
+
+// Get the next serial number (active row number - 1)
+var nextSerialNumber = currentLastRow - 1;
+
+// Append data to the destination sheet with serial number
+destinationSheet.getRange(currentLastRow + 1, 1, 1, 1).setValue(currentLastRow);
+
+destinationSheet.getRange(currentLastRow + 1, 2, 1, rowData.length).setValues([rowData.slice(0)]);
+
+var dateCol = 0;
+var timeCol = 0;
+const status = TXNstatus;
+const { dCol, tCol } = getStatusColumns(status);
+
+dateValue = sourceSheet.getRange(activeRow, dCol).getValue();
+timeValue = sourceSheet.getRange(activeRow, tCol).getValue();
+
+//if ((dateValue === "") || (timeValue ==="")){
+//      if (showMessageBoxOK(title + " : Update Date and/or Time before sending to the Supply Team")){
+//         return;
+//  }
+//}
+
+destinationSheet.getRange(currentLastRow + 1, 15).setValue(dateValue);
+destinationSheet.getRange(currentLastRow + 1, 16).setValue(timeValue);
+
+var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd-MM-yyyy");
+destinationSheet.getRange(currentLastRow + 1, 17).setValue(today);
+
+// update source sheet
+sourceSheet.getRange(activeRow, InformedSupplyTeamCol).setValue("Shared");
+
+sourceSheet.setActiveRange(activeCell);
+
+}
+
+
+function GetEventDateTime(value, callback){
+
+  switch(value) {
+    case "Near Unloading Point" : 
+          dCol = 14;
+          tCol = 15;
+          break;
+    case "Reported" : 
+          dCol = 16;
+          tCol = 17;    
+          break;
+    case "Unloaded" : 
+          dCol = 18;
+          tCol = 19;    
+          break;
+  
+    default :
+          // do nothing        
+  }
+  callback(dCol, tCol)
+}
+
+function getStatusColumns(status) {
+  // mapping of statuses to columns
+  const statusColumns = {
+    'Near Unloading Point': { dCol: 14, tCol: 15 },
+    'Reported': { dCol: 16, tCol: 17 },
+    'Unloaded': { dCol: 18, tCol: 19 },
+    'Completed': { dCol: 18, tCol: 19 },
+  };
+
+  // Get the columns based on the status
+  const columns = statusColumns[status] || { dCol: 'Unknown', tCol: 'Unknown' };
+
+  // Return the columns
+  return columns;
+}

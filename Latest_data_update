@@ -1,0 +1,15 @@
+function NewonEdit1(e) {
+  const range = e.range;
+  const sheet = range.getSheet();
+ const allowedSheets = ["Tracking Data", "Summary1", "GPS tracking", "V-xpress1", "TD1", "safe express1", "Settings1"];
+  
+  if (allowedSheets.includes(sheet.getName()) && range.getColumn() !== 1) {
+    const row = range.getRow();
+    const formattedTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm ");
+    const userEmail = Session.getActiveUser().getEmail();
+      
+    sheet.getRange(row, 52).setValue(formattedTime);
+    sheet.getRange(row, 47).setValue(userEmail);
+  }
+}
+//ok

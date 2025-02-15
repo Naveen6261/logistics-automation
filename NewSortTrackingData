@@ -1,0 +1,28 @@
+function SortTrackingDataSheet() {
+
+  var trackingDataSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Tracking Data");
+
+  var lastRow = trackingDataSheet.getLastRow();
+
+  var lastColumn = trackingDataSheet.getLastColumn();
+
+  // Get the range of data to sort.
+  var range = trackingDataSheet.getRange("A7:" + columnNumberToLetter(lastColumn) + lastRow);
+
+  // Sort the data by column A.
+  range.sort([{column: 1, ascending: true}]);
+}
+
+function columnNumberToLetter(columnNumber) {
+  var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  var letterIndex = columnNumber - 1;
+  var columnLetter = "";
+  while (letterIndex >= 0) {
+    var remainder = letterIndex % 26;
+    columnLetter = alphabet[remainder] + columnLetter;
+    letterIndex = Math.floor(letterIndex / 26) - 1;
+  }
+  return columnLetter;
+}
+
+
