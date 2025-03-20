@@ -1,0 +1,128 @@
+function distributeNewData() {
+  const destinationSheetID = '1ubdtF3AlIMcPs12RQJmrHBEGfSoIlz51VZJwr75GbDs';
+  const sourceSheetID = '1cWcN1OAIg3gdU5zUTh70-XZwIB9h2oaAR2sAn0aAD7c';
+
+  const sourceSheetName = 'Tracking Data';  
+  const destinationSheets = ['Pooja Feedback', 'Ragini Feedback'];  
+
+  const sourceSpreadsheet = SpreadsheetApp.openById(sourceSheetID);
+  const destSpreadsheet = SpreadsheetApp.openById(destinationSheetID);
+
+  const sourceSheet = sourceSpreadsheet.getSheetByName(sourceSheetName);
+  if (!sourceSheet) {
+    Logger.log(`Source sheet not found: ${sourceSheetName}`);
+    return;
+  }
+
+  const sourceData = sourceSheet.getDataRange().getValues();
+  if (sourceData.length <= 1) {
+    Logger.log('No valid data found in source sheet.');
+    return;
+  }
+  Logger.log(`Fetched ${sourceData.length - 1} rows from source sheet "${sourceSheetName}"`);
+
+  // Fetch destination sheets & existing data
+  const destinationData = destinationSheets.map(sheetName => {
+    const sheet = destSpreadsheet.getSheetByName(sheetName);
+    if (!sheet) throw new Error(`Destination sheet "${sheetName}" not found.`);
+    return {
+      name: sheetName,
+      sheet,
+      data: sheet.getDataRange().getValues().slice(1) // Skip header row
+    };
+  });
+
+  Logger.log('Fetched existing data from destination sheets.');
+
+  // Store existing transactions from destination sheets
+  const existingTransactions = new Set();
+  destinationData.forEach(dest => {
+    dest.data.forEach(row => {
+      if (row.length > 2 && row[2]) {
+        existingTransactions.add(row[2]); // Column C: Transaction Number
+      }
+    });
+  });
+
+  Logger.log('Existing transactions collected.');
+
+  // Columns Mapping
+  const headersMapping = {
+    3: 0,  // Column D -> A (Loading Date)
+    17: 1, // Column R -> B (Unloading Date)
+    5: 2,  // Column F -> C (Txn No)
+    6: 3,  // Column G -> D (Truck No)
+    22: 4, // Column W -> E (Trucker Name)
+    8: 6,  // Column I -> G (From City)
+    9: 7,  // Column J -> H (To City)
+    10: 8, // Column K -> I (Status)
+    2: 44, // Column C -> AS (Branch)
+    21: 45, // Column V -> AT
+    19: 46, // Column T -> AU
+    20: 47, // Column U -> AV
+  };
+
+  const statusColumn = 10; // Column K: Status
+  const validStatuses = ['In Transit', 'Completed'];
+
+  const currentDate = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+  let alternateIndex = 0; // Used for even distribution
+
+  Logger.log('Starting data distribution process.');
+
+  let processedCount = 0;
+
+  sourceData.slice(1).forEach(row => { // Skip header row
+    const txnNo = row[5]; // Column F: Transaction Number
+    const status = row[statusColumn];
+
+    // Skip if already processed or status is not valid
+    if (!txnNo) {
+      Logger.log('Skipping row due to missing Txn No: ' + JSON.stringify(row));
+      return;
+    }
+
+    if (existingTransactions.has(txnNo)) {
+      Logger.log(`Skipping duplicate transaction: ${txnNo}`);
+      return;
+    }
+
+    if (!validStatuses.includes(status)) {
+      Logger.log(`Skipping row due to invalid status: ${status}`);
+      return;
+    }
+
+    // Create a new row based on headersMapping
+    const newRow = Array(50).fill(''); // Ensure enough columns
+    for (const [sourceCol, destCol] of Object.entries(headersMapping)) {
+      if (row[sourceCol] !== undefined) {
+        newRow[destCol] = row[sourceCol];
+      }
+    }
+    newRow[39] = currentDate; // Column AN: Date
+
+    // Ensure Trucker Name (Column E) matches the Trip ID (Column C)
+    const tripID = newRow[2]; // Column C: Transaction Number
+    const truckerName = newRow[4]; // Column E: Trucker Name
+
+    if (truckerName && tripID) {
+      const conflictExists = destinationData.some(dest =>
+        dest.data.some(existingRow => existingRow[2] === tripID && existingRow[4] !== truckerName)
+      );
+
+      if (conflictExists) {
+        Logger.log(`Conflict detected for Trip ID ${tripID}. Skipping this row.`);
+        return;
+      }
+    }
+
+    // Append row to alternating sheets
+    const targetSheet = destinationData[alternateIndex];
+    targetSheet.sheet.appendRow(newRow);
+    existingTransactions.add(txnNo); // Mark transaction as processed
+    alternateIndex = 1 - alternateIndex; // Switch between sheets
+    processedCount++;
+  });
+
+  Logger.log(`Data distribution completed. ${processedCount} rows added.`);
+}
