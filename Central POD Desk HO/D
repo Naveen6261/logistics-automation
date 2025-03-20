@@ -1,0 +1,19 @@
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('Index');
+}
+
+function searchEntries(searchTerm) {
+  const ss = SpreadsheetApp.openById("189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4");
+  const sheet = ss.getSheetByName("Courier Inward");
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+
+  // Assuming the first row contains headers
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase().includes(searchTerm.toLowerCase())) {
+      results.push(data[i]); // Push the entire row
+    }
+  }
+
+  return results;
+}

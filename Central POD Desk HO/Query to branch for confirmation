@@ -1,0 +1,115 @@
+function draftEmailFromSerialNumber() {
+  try {
+    var spreadsheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+    var sheetName = 'POD Processed';
+    var settingsSheetName = 'Settings';
+    var folderId = '1tXeYc6VbuIwKTjWPOEAa_wKUp1h3Fz_8';
+
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(sheetName);
+    var settingsSheet = ss.getSheetByName(settingsSheetName);
+
+    // Prompt the user to input the serial number
+    var ui = SpreadsheetApp.getUi();
+    var response = ui.prompt('Enter Serial Number', 'Please enter the serial number:', ui.ButtonSet.OK_CANCEL);
+
+    // Process the user's response
+    if (response.getSelectedButton() == ui.Button.OK) {
+      var serialNumber = response.getResponseText().trim();
+      Logger.log('Serial Number Entered: ' + serialNumber);
+
+      // Find the row with the given serial number in Column D
+      var dataRange = sheet.getDataRange().getValues();
+      var activeRow = -1;
+      for (var i = 1; i < dataRange.length; i++) {
+        var cellValue = dataRange[i][3].toString().trim(); // Convert to string and trim
+        if (cellValue === serialNumber) { // Column D is index 3
+          activeRow = i + 1; // Convert to 1-based index
+          Logger.log('Row found: ' + activeRow);
+          break;
+        }
+      }
+
+      if (activeRow == -1) {
+        Logger.log('Serial number not found.');
+        ui.alert('Serial number not found.');
+        return;
+      }
+
+      var data = sheet.getRange(activeRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var settingsData = settingsSheet.getDataRange().getValues();
+      var settingsEmailMap = {};
+      var settingsBranchEmailMap = {};
+
+      for (var i = 1; i < settingsData.length; i++) {
+        var name = settingsData[i][8]; // Column I for names
+        var email = settingsData[i][9]; // Column J for emails
+        settingsEmailMap[name] = email;
+
+        var branchName = settingsData[i][0]; // Column A for branch names
+        var branchEmail = settingsData[i][7]; // Column H for branch emails
+        settingsBranchEmailMap[branchName] = branchEmail;
+      }
+
+      var txnNo = data[3]; // Column D for txn no
+      var branchName = data[6]; // Column G for branch name
+      var subjectLine = data[12]; // Column M for subject line
+      var nameA = data[26]; // Column AA for name of person A
+      var nameB = data[34]; // Column AI for name of person B
+
+      var toEmails = [];
+      if (settingsEmailMap[nameA]) toEmails.push(settingsEmailMap[nameA]);
+      if (settingsEmailMap[nameB]) toEmails.push(settingsEmailMap[nameB]);
+
+      var ccEmails = [];
+      if (settingsBranchEmailMap[branchName]) ccEmails.push(settingsBranchEmailMap[branchName]);
+
+      var subject = `POD QUERY // ${txnNo} ${branchName} ${subjectLine}`;
+      var body = `Dear Branch Team,
+
+Scan copy is attached and NOT uploaded in the Lobb office.
+The same is dispatched to the branch.
+
+Please confirm if the attached document is accepted by the transporter as POD. On receiving your confirmation POD will be uploaded.
+
+Thanks and Regards,
+Centralized POD
+Lobb HO`;
+
+      // Find the attachment in the folder
+      var folder = DriveApp.getFolderById(folderId);
+      var files = folder.getFiles();
+      var attachment = null;
+      var fileNames = [];
+
+      while (files.hasNext()) {
+        var file = files.next();
+        fileNames.push(file.getName()); // Log file names
+        if (file.getName().includes(txnNo)) {
+          attachment = file;
+          Logger.log('Attachment found: ' + file.getName());
+          break;
+        }
+      }
+
+      Logger.log('Files found in folder: ' + fileNames.join(', '));
+
+      if (attachment) {
+        GmailApp.createDraft(toEmails.join(','), subject, body, {
+          cc: ccEmails.join(','),
+          attachments: [attachment]
+        });
+        Logger.log('Email Draft successful.');
+        ui.alert('Email Draft successful.');
+      } else {
+        Logger.log('Attachment not found for TXN No: ' + txnNo);
+        ui.alert('Attachment not found for TXN No: ' + txnNo);
+      }
+    } else {
+      Logger.log('Prompt cancelled.');
+    }
+  } catch (e) {
+    Logger.log('Error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
+  }
+}

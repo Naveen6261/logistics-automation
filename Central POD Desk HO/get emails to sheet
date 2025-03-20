@@ -1,0 +1,51 @@
+function getEmailsToSheet() {
+  var sheetName = 'Email Extracktion POD confirmation'; // Name of the target sheet
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('Sheet not found: ' + sheetName);
+    return;
+  }
+  
+  sheet.clear(); // Clear the sheet before adding new data
+
+  // Set headers
+  var headers = ["From", "To", "Subject", "Date", "Body", "5-Digit Number"];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  var query = 'subject:"Re: POD QUERY //"';
+  var threads = GmailApp.search(query, 0, 499); // Fetch first 100 threads matching the query
+  var row = 2; // Start from the second row as the first row contains headers
+  var batchSize = 10; // Adjust the batch size as needed
+
+  for (var i = 0; i < threads.length; i += batchSize) {
+    var data = [];
+    var threadBatch = threads.slice(i, i + batchSize);
+    
+    for (var j = 0; j < threadBatch.length; j++) {
+      var messages = threadBatch[j].getMessages();
+      for (var k = 0; k < messages.length; k++) {
+        var message = messages[k];
+        var from = message.getFrom();
+        var to = message.getTo();
+        var subject = message.getSubject();
+        var date = message.getDate();
+        var body = message.getPlainBody();
+
+        // Extract 5-digit number from the subject
+        var fiveDigitNumber = subject.match(/\b\d{5}\b/);
+        fiveDigitNumber = fiveDigitNumber ? fiveDigitNumber[0] : 'N/A';
+
+        data.push([from, to, subject, date, body, fiveDigitNumber]);
+      }
+    }
+
+    // Write data to sheet in one go
+    if (data.length > 0) {
+      sheet.getRange(row, 1, data.length, data[0].length).setValues(data);
+      row += data.length;
+    }
+  }
+  
+  SpreadsheetApp.getUi().alert('Email extraction completed successfully.');
+}

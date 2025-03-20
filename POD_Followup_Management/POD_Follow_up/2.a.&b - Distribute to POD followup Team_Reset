@@ -1,0 +1,71 @@
+function collectDataFromSheetsInSettings() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var settingsSheet = ss.getSheetByName("Settings");
+  var sheetNamesRange = settingsSheet.getRange("A2:A10");
+  var sheetNames = sheetNamesRange.getValues(); // Array of sheet names
+  
+  var podMasterDataSheet = ss.getSheetByName("POD Master Data");
+  if (!podMasterDataSheet) {
+    Logger.log("POD Master Data sheet not found.");
+    return;
+  }
+  
+  var totalRowsCollected = 0; // Variable to track total rows collected
+  
+  for (var i = 0; i < sheetNames.length; i++) {
+    var sheetName = sheetNames[i][0];
+    if (sheetName) {
+      var sheet = ss.getSheetByName(sheetName);
+      if (sheet) {
+        var dataRange = sheet.getRange("A4:AA" + sheet.getLastRow()); // Start from row 4 and go to the last row
+        var sheetData = dataRange.getValues(); // Get data from current sheet
+        
+        // Process sheetData to filter and collect relevant rows
+        var newData = [];
+        var rowsToKeep = [];
+        for (var row = 0; row < sheetData.length; row++) {
+          var rowData = sheetData[row];
+          var nameInColumnAA = rowData[26]; // Assuming column 27 contains the name
+          
+          if (nameInColumnAA === sheetName) {
+            // Add data to newData array
+            newData.push(rowData);
+          } else {
+            // Track rows to keep
+            rowsToKeep.push(rowData);
+          }
+        }
+        
+        // Append newData to POD Master Data sheet
+        if (newData.length > 0) {
+          var startRow = podMasterDataSheet.getLastRow() + 1;
+          var numColumns = newData[0].length;
+          podMasterDataSheet.getRange(startRow, 1, newData.length, numColumns).setValues(newData);
+          totalRowsCollected += newData.length; // Update total rows collected
+        }
+        
+        // Clear all data in current sheet starting from row 4
+        var numRowsToClear = sheet.getLastRow() - 3; // Exclude header rows
+        if (numRowsToClear > 0) {
+          sheet.getRange(4, 1, numRowsToClear, sheet.getLastColumn()).clearContent();
+        }
+
+        // Write back the rows to keep
+        if (rowsToKeep.length > 0) {
+          sheet.getRange(4, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+        }
+        
+        Logger.log("Processed sheet: " + sheetName);
+      } else {
+        Logger.log("Sheet not found: " + sheetName);
+      }
+    }
+  }
+  
+  // Send notification email
+  var emailAddress = "naveenkumar.m@lobb.in";
+  var subject = "POD Data Collected Back to POD Master Data";
+  var body = "Total rows collected: " + totalRowsCollected;
+  
+  MailApp.sendEmail(emailAddress, subject, body);
+}

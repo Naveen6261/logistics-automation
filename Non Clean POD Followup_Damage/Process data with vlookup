@@ -1,0 +1,44 @@
+function processDataWithVLOOKUP() {
+  const sourceSheetId = "1PjBU4LN2WoUrBi4w-p1omLFCtfMmtyLeUi9o7Xh5dAw"; // Source sheet ID
+  const sourceRange = "T_C_D!F:W"; // Source range
+  const destinationSheetName = "FOLLOWUP_DAMAGE"; // Replace with your actual sheet name
+  const startRow = 5; // Start processing from row 5
+  const startColumn = 13; // Column M
+
+  const destSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Log available sheets to debug
+  Logger.log("Available sheets: " + destSpreadsheet.getSheets().map(sheet => sheet.getName()));
+
+  const destSheet = destSpreadsheet.getSheetByName(destinationSheetName);
+  if (!destSheet) {
+    throw new Error(`Sheet "${destinationSheetName}" not found. Please check the sheet name.`);
+  }
+
+  // Fetch data from source sheet
+  const sourceSpreadsheet = SpreadsheetApp.openById(sourceSheetId);
+  const sourceData = sourceSpreadsheet.getRange(sourceRange).getValues();
+
+  // Fetch data from column D of the destination sheet
+  const destRange = destSheet.getRange(startRow, 4, destSheet.getLastRow() - startRow + 1); // Column D
+  const destData = destRange.getValues().flat();
+
+  // Prepare results
+  const results = [];
+  destData.forEach((value) => {
+    if (value === "") {
+      results.push(["", "", "", "", ""]);
+    } else {
+      const matchRow = sourceData.find(row => row[0] === value);
+      if (matchRow) {
+        results.push([matchRow[16], matchRow[17], matchRow[1], matchRow[14], matchRow[15]]);
+      } else {
+        results.push(["", "", "", "", ""]);
+      }
+    }
+  });
+
+  // Write results to column M
+  destSheet.getRange(startRow, startColumn, results.length, results[0].length).setValues(results);
+}
+// to add the data only fo 

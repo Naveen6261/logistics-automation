@@ -1,0 +1,47 @@
+function sendEmailWithCSVAttachment1(X) {
+  // Get today's date
+  var today = new Date();
+  var formattedDate = Utilities.formatDate(today, Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+  // Get the spreadsheet
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName("Speed post");
+
+  // Get the data range
+  var range = sheet.getRange("A:V");
+  var numRows = range.getNumRows();
+  var values = range.getValues();
+
+   // Prepare CSV data with serial numbers
+  var csv = '"Serial Number","' + values[0].join('","') + '"\n'; // Header row
+  var counter = 1;
+  for (var i = 2; i < numRows; i++) {
+    var row = [];
+    row.push(counter++); // Add serial number
+    for (var j = 1; j < values[i].length; j++) {
+      // Format date in column B to "dd/MMM/yyyy"
+      if (j === 1 && values[i][j] instanceof Date) {
+        row.push(Utilities.formatDate(values[i][j], Session.getScriptTimeZone(), "dd/MMM/yyyy"));
+      } else {
+        row.push(values[i][j]);
+      }
+    }
+    csv += '"' + row.join('","') + '"\n';
+  }
+
+  // Compose email
+  var subject = "Booking Data - Truck central speed Post Customer id- 3000060048 ";
+  var message = "Dear Sir,\n\nPlease find attached today's dispatched details " + formattedDate + ".\n\nThanks and regards,\n\n,\n\n Operations Team \n\n,Lobb\nTruckcentral Solutions Pvt Ltd\nMob: +91 97383 87222 / Mob : 7892218457\nE-mail- pod@lobb.in";
+  var email = "spccbnpls@gmail.com,gnkprasanna@gmail.com";
+  var cc = "POD@LOBB.IN,accounts@lobb.in";
+
+
+  // Send email with attachment
+  MailApp.sendEmail({
+    to: email,
+    cc: cc,
+    subject: subject,
+    body: message,
+    attachments: [{fileName: subject + ".csv", content: csv, mimeType: "text/csv"}]
+  });
+}

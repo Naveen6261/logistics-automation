@@ -1,0 +1,38 @@
+function generateFileLinks() {
+  var spreadsheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';  // Your spreadsheet ID
+  var sheetName = 'Courier Inward';
+  var folderId = '1thvGILVhi0e6phxvsuBBRGPSGDtiJvCe';  // Your folder ID
+  var folder = DriveApp.getFolderById(folderId);
+  var files = folder.getFiles();
+  var fileMap = {};
+
+  // Create a map of file names to file IDs
+  while (files.hasNext()) {
+    var file = files.next();
+    fileMap[file.getName()] = file.getId();
+  }
+
+  var sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(sheetName);
+  var data = sheet.getRange(2, 8, sheet.getLastRow() - 1, 2).getValues();  // Get data from columns H and I
+
+  for (var i = 0; i < data.length; i++) {
+    var filePathH = data[i][0];
+    var filePathI = data[i][1];
+
+    var fileNameH = filePathH ? filePathH.split('/').pop() : '';
+    var fileNameI = filePathI ? filePathI.split('/').pop() : '';
+
+    var fileIdH = fileMap[fileNameH];
+    var fileIdI = fileMap[fileNameI];
+
+    if (fileIdH) {
+      var fileUrlH = 'https://drive.google.com/uc?export=view&id=' + fileIdH;
+      sheet.getRange(i + 2, 10).setFormula('=HYPERLINK("' + fileUrlH + '", "View Image")');  // Column J
+    }
+
+    if (fileIdI) {
+      var fileUrlI = 'https://drive.google.com/uc?export=view&id=' + fileIdI;
+      sheet.getRange(i + 2, 11).setFormula('=HYPERLINK("' + fileUrlI + '", "View Image")');  // Column K
+    }
+  }
+}

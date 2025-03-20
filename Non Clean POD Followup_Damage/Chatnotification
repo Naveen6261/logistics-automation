@@ -1,0 +1,92 @@
+function sendTableImageToChat() {
+    try {
+        var sheet = SpreadsheetApp.openById("1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro");
+        var data = sheet.getSheetByName("Summary").getRange("E2:F6").getValues();
+
+        if (data.length === 0) {
+            Logger.log("⚠️ No data found, skipping message.");
+            return;
+        }
+
+        var imageUrl = createTableImage(data);
+
+        if (!imageUrl) {
+            Logger.log("⚠️ Image upload failed, skipping message.");
+            return;
+        }
+
+        var url = "https://chat.googleapis.com/v1/spaces/AAAAvyJ1noY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=aOwO9BjMzpeE_cIvUKBhlibmnVrYzHRvEXdAcLwQ1HE";
+
+        var payload = {
+            text: "📊 *Today's Summary Report*",
+            cards: [
+                {
+                    sections: [
+                        {
+                            widgets: [
+                                {
+                                    image: { imageUrl: imageUrl }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var options = {
+            method: "post",
+            contentType: "application/json",
+            payload: JSON.stringify(payload)
+        };
+
+        UrlFetchApp.fetch(url, options);
+        Logger.log("✅ Table image sent successfully to Google Chat!");
+
+    } catch (e) {
+        Logger.log("❌ Error in sendTableImageToChat: " + e.toString());
+    }
+}
+
+function createTableImage(data) {
+    try {
+        var folderId = "1Ml3VYtC22W__wSbRcV1d1F-OqRq1BsCM";  // Public Drive Folder
+        var folder = DriveApp.getFolderById(folderId);
+
+        // 1️⃣ Create a Google Doc
+        var doc = DocumentApp.create("Summary Table");
+        var body = doc.getBody();
+        body.appendParagraph("📊 Today's Summary Report").setBold(true).setFontSize(14);
+
+        // 2️⃣ Insert a Table in Google Docs
+        var table = [];
+        table.push(["Category", "Value"]);  // Headers
+        data.forEach(row => table.push([row[0], row[1]]));
+
+        body.appendTable(table);
+
+        // 3️⃣ Save & Convert to Image
+        var docId = doc.getId();
+        var docFile = DriveApp.getFileById(docId);
+        var pdfBlob = docFile.getAs("application/pdf");
+
+        // 4️⃣ Convert PDF to Image (Using Google Drive API)
+        var pdfFile = folder.createFile(pdfBlob);
+        var imageBlob = pdfFile.getAs("image/png").setName("SummaryTable.png");
+
+        var imageFile = folder.createFile(imageBlob);
+        imageFile.setSharing(DriveApp.Access.ANYONE, DriveApp.Permission.VIEW);
+
+        // 5️⃣ Delete Temp Google Doc & PDF
+        docFile.setTrashed(true);
+        pdfFile.setTrashed(true);
+
+        var imageUrl = "https://lh3.google.com/u/0/d/" + imageFile.getId();
+        Logger.log("✅ Image uploaded successfully: " + imageUrl);
+        return imageUrl;
+
+    } catch (e) {
+        Logger.log("❌ Error in createTableImage: " + e.toString());
+        return null;
+    }
+}

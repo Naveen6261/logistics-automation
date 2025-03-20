@@ -1,0 +1,111 @@
+function exportLeaveDetailsAndSendEmail() {
+    const spreadsheetId = "1YG5cVVio29rcU1UWjW6pIYZ3_jkWjGpDXDX8gOEV-TY";
+    const leaveDetailsSheetName = "Leave Details";
+    const leaveSummarySheetName = "Leave Summary";
+  
+    // Open the spreadsheet
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  
+    // Get data from "Leave Details" (Columns A:E where Column B has data)
+    const leaveDetailsSheet = spreadsheet.getSheetByName(leaveDetailsSheetName);
+    const leaveDetailsData = leaveDetailsSheet.getRange(1, 1, leaveDetailsSheet.getLastRow() - 1, 5)
+      .getValues()
+      .filter(row => row[1]); // Filter rows where Column B has data
+  
+    // Get data from the range specified in "Leave Details" cell L16 (to fetch data from "Leave Summary")
+    const leaveSummarySheet = spreadsheet.getSheetByName(leaveSummarySheetName);
+    const leaveSummaryRange = leaveDetailsSheet.getRange("M16").getValue(); // Get the range from L16
+    const leaveSummaryData = leaveSummarySheet.getRange(leaveSummaryRange).getValues();
+  
+    // Create a folder structure: Current Year -> Current Month
+    const currentYear = new Date().getFullYear();
+    const currentMonth = getMonthName(new Date());
+    const rootFolder = DriveApp.getRootFolder();
+    let yearFolder = getOrCreateFolder(rootFolder, currentYear.toString());
+    let monthFolder = getOrCreateFolder(yearFolder, currentMonth);
+  
+    // Create a new Google Sheet in the respective folder
+    const tempSpreadsheet = SpreadsheetApp.create("Leave Tracker");
+    const tempFile = DriveApp.getFileById(tempSpreadsheet.getId());
+    monthFolder.addFile(tempFile);
+    DriveApp.getRootFolder().removeFile(tempFile); // Remove from root folder
+  
+    // Add "Leave Details" data to the first sheet and format it
+    const leaveDetailsExcelSheet = tempSpreadsheet.getSheetByName("Sheet1");
+    leaveDetailsExcelSheet.setName("Leave Details");
+    leaveDetailsExcelSheet.getRange(1, 1, leaveDetailsData.length, leaveDetailsData[0].length).setValues(leaveDetailsData);
+    formatSheet(leaveDetailsExcelSheet, "Leave Details");
+  
+    // Add "Leave Summary" data to a new sheet and format it
+    const leaveSummaryExcelSheet = tempSpreadsheet.insertSheet("Leave Summary");
+    leaveSummaryExcelSheet.getRange(1, 1, leaveSummaryData.length, leaveSummaryData[0].length).setValues(leaveSummaryData);
+    formatSheet(leaveSummaryExcelSheet, "Leave Summary");
+  
+    // Remove the default sheet if it exists
+    const defaultSheet = tempSpreadsheet.getSheetByName("Sheet1");
+    if (defaultSheet) {
+      tempSpreadsheet.deleteSheet(defaultSheet);
+    }
+  
+    // Email setup
+    //const emailTo = "mylari.gupta@lobb.in";
+    //const emailCc = "anusha.inamdar@lobb.in";
+    const emailTo = "naveenkumar.m@lobb.in";
+    const emailCc = "test@lobb.in";
+  
+    const previousMonth = getMonthName(new Date(new Date().setMonth(new Date().getMonth() - 1)));
+    const subject = `Leave Tracker - ${currentMonth} - ${currentYear}`;
+    const body = `
+      Dear Sir,
+  
+      Please find the attached email tracker for the month of ${currentMonth}.
+      Dated ${previousMonth} 26th to ${currentMonth} 25th.
+  
+      Thanks and regards,
+      Naveen Kumar M
+    `;
+  
+    // Send email with a link to the Google Sheet
+    const fileUrl = tempFile.getUrl();
+    GmailApp.sendEmail(emailTo, subject, body + `\n\n[Link to Google Sheet](${fileUrl})`, {
+      cc: emailCc
+    });
+  }
+  
+  // Helper function to format a sheet
+  function formatSheet(sheet, title) {
+    const range = sheet.getDataRange();
+    const numColumns = range.getNumColumns();
+  
+    // Add bold headers
+    const header = sheet.getRange(1, 1, 1, numColumns);
+    header.setFontWeight("bold").setBackground("#f4f4f4");
+  
+    // Freeze header row
+    sheet.setFrozenRows(1);
+  
+    // Auto-resize columns
+    sheet.autoResizeColumns(1, numColumns);
+  
+    // Set title in A1
+    sheet.getRange(1, 1).setValue(`${title} (Formatted)`);
+  
+    // Add borders around data
+    range.setBorder(true, true, true, true, true, true);
+  }
+  
+  // Helper function to get or create a folder
+  function getOrCreateFolder(parentFolder, folderName) {
+    const folders = parentFolder.getFoldersByName(folderName);
+    return folders.hasNext() ? folders.next() : parentFolder.createFolder(folderName);
+  }
+  
+  // Helper function to get the month name
+  function getMonthName(date) {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    return monthNames[date.getMonth()];
+  }
+  

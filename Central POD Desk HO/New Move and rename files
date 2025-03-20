@@ -1,0 +1,63 @@
+function renameAndMoveFiles() {
+  var spreadsheetId = "189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4";
+  var sheetName = "Courier Inward";
+  var folderId = "1Bcl01Oe8JiqGlKprVGExleu7LRbawODG"; // Destination folder ID
+
+  var spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  var lastRow = sheet.getLastRow();
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, 6); // Assuming columns A to F are relevant
+
+  var data = dataRange.getValues();
+
+  var destinationFolder = DriveApp.getFolderById(folderId);
+
+  for (var i = 0; i < data.length; i++) {
+    var oldLinks = data[i][4].split('\n'); // Assuming column E contains links separated by newline
+    var newName = data[i][2] + " " + data[i][3]; // Assuming column D and C for new file name
+
+    // Check if column F is empty for this row
+    if (!data[i][5]) {
+      try {
+        for (var j = 0; j < oldLinks.length; j++) {
+          var fileId = getIdFromUrl(oldLinks[j]);
+          
+          // Check if fileId is valid (not null or undefined)
+          if (fileId) {
+            var file = DriveApp.getFileById(fileId);
+            var fileExtension = file.getName().split('.').pop();
+            var newFileName = newName + '.' + fileExtension;
+
+            // Create a copy of the file in the destination folder
+            var copiedFile = file.makeCopy(newFileName, destinationFolder);
+
+            // Get direct file link after copying to destination folder
+            var newFileLink = copiedFile.getUrl();
+
+            // Update link in column F
+            data[i][5] = newFileLink;
+
+            // Remove the original file from source folder
+            file.setTrashed(true); // Move to trash (will be permanently deleted after 30 days)
+
+            // Optional: Remove the original file link in column E if desired
+            // data[i][4] = '';
+
+          } else {
+            throw new Error("Invalid file ID found in row " + (i + 2));
+          }
+        }
+      } catch (error) {
+        Logger.log("Error processing row " + (i + 2) + ": " + error.message);
+      }
+    }
+  }
+
+  // Update sheet with new links
+  dataRange.setValues(data);
+}
+
+function getIdFromUrl(url) {
+  var match = url.match(/[-\w]{25,}/);
+  return match ? match[0] : null;
+}

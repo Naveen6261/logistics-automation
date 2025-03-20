@@ -1,0 +1,95 @@
+function duplicateRowsFromActiveRow(numberOfRows) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var activeRow = sheet.getActiveRange().getRow();
+  var columnsToCopy = [1, 2, 3, 5, 6, 9]; // Columns A, B, C, D, G, H
+
+  // Get values from the active row
+  var values = [];
+  for (var i = 0; i < columnsToCopy.length; i++) {
+    values.push(sheet.getRange(activeRow, columnsToCopy[i]).getValue());
+  }
+
+  // Add specified number of new rows
+  for (var i = 0; i < numberOfRows; i++) {
+    sheet.insertRowAfter(activeRow + i); // Insert a new row after the active row
+    var newRow = activeRow + i + 1;
+    for (var j = 0; j < columnsToCopy.length; j++) {
+      sheet.getRange(newRow, columnsToCopy[j]).setValue(values[j]);
+    }
+  }
+}
+
+function runDuplicateRows() {
+  var numberOfRows = Browser.inputBox('Enter the number of rows to duplicate:');
+  numberOfRows = parseInt(numberOfRows);
+  if (!isNaN(numberOfRows) && numberOfRows > 0) {
+    duplicateRowsFromActiveRow(numberOfRows);
+    Browser.msgBox('Rows duplicated successfully.');
+  } else {
+    Browser.msgBox('Please enter a valid number.');
+  }
+}
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Duplicate')
+    .addItem('Duplicate Rows', 'runDuplicateRows')
+    .addToUi();
+}
+
+function copyData(e) {
+  try {
+    if (!e) {
+      Logger.log('Event object is undefined');
+      return;
+    }
+
+    Logger.log('copyData triggered');
+    var sheet = e.source.getActiveSheet();
+
+    // Define the sheet names
+    var scanSheetName = 'Courier Inward';
+    var mainSheetName = 'POD Processed';
+
+    // Check if the changed sheet is the ScanSheet
+    if (sheet.getName() === scanSheetName) {
+      Logger.log('Change detected in Courier Inward sheet');
+      // Get the range that was changed
+      var range = e.range;
+
+      // Get the value of the changed cell
+      var editedValue = range.getValue();
+      Logger.log('Edited value: ' + editedValue);
+
+      // Check if the changed cell is in the column where you scan courier numbers
+      if (range.getColumn() == 3 && editedValue != '') { // Assuming column C is used for scanning
+        var mainSheet = e.source.getSheetByName(mainSheetName);
+
+        // Find the next empty row in the main sheet
+        var lastRow = mainSheet.getLastRow();
+        var nextRow = lastRow + 1;
+        Logger.log('Next row in main sheet: ' + nextRow);
+
+        // Copy the scanned value to the main sheet
+        mainSheet.getRange(nextRow, 5).setValue(editedValue); // Assuming column E is used for courier numbers in MainSheet
+
+        // Copy additional columns from Courier Inward to POD Processed
+        mainSheet.getRange(nextRow, 2).setValue(sheet.getRange(range.getRow(), 1).getValue()); // Column A to Column B
+        mainSheet.getRange(nextRow, 5).setValue(sheet.getRange(range.getRow(), 3).getValue()); // Column C to Column E
+        mainSheet.getRange(nextRow, 6).setValue(sheet.getRange(range.getRow(), 4).getValue()); // Column D to Column F
+
+        Logger.log('Data copied to main sheet');
+      }
+    }
+  } catch (error) {
+    Logger.log('Error: ' + error.toString());
+  }
+}
+
+//function onEdit(e) {
+ // copyData(e);
+//}
+
+function onChange(e) {
+  copyData(e);
+}

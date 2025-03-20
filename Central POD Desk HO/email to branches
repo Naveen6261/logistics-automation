@@ -1,0 +1,72 @@
+function sendEmailWithPODRemarks() {
+  var emailSheetId1 = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+  var emailSheetName1 = 'Email';
+  
+  var today = new Date().toDateString(); // Format date as Thu Jul 04 2024
+
+// Fetch data from Email sheet (first pivot) // Fetch data from Email sheet (second pivot)
+  var emailSheet = SpreadsheetApp.openById(emailSheetId1).getSheetByName(emailSheetName1);
+  var emailData3 = emailSheet.getRange('H1:J' + emailSheet.getLastRow()).getValues();
+  var emailBackgrounds3 = emailSheet.getRange('H1:J' + emailSheet.getLastRow()).getBackgrounds();
+
+  // Fetch data from Email sheet (H1:J range)
+  var csvData = emailSheet.getRange('H1:J' + emailSheet.getLastRow()).getValues();
+  var csvDataFiltered = csvData.filter(row => row.some(cell => cell !== ""));
+
+  // Function to create HTML table from data
+  function createHtmlTable1(data, backgrounds) {
+    var html = '<table border="1" style="border-collapse: collapse;">';
+    data.forEach(function(row, rowIndex) {
+      if (row.some(cell => cell !== "")) { // Only add rows with at least one non-empty cell
+        html += '<tr>';
+        row.forEach(function(cell, colIndex) {
+          var backgroundColor = backgrounds[rowIndex][colIndex];
+          var cellValue = String(cell).replace(/\n/g, '<br>');
+          html += '<td style="padding: 5px; background-color: ' + backgroundColor + ';">' + cellValue + '</td>';
+        });
+        html += '</tr>';
+      }
+    });
+    html += '</table>';
+    return html;
+  }
+
+  // Function to create CSV from data
+  function createCsv(data) {
+    var csv = '';
+    data.forEach(function(row) {
+      csv += row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',') + '\n';
+    });
+    return csv;
+  }
+
+  var csvContent = createCsv(csvDataFiltered);
+  var blob1 = Utilities.newBlob(csvContent, 'text/csv', 'POD_Summary.csv');
+
+  // Create the email body
+  var emailBody = 'Dear All,<br><br>';
+  emailBody += 'Please find the attached POD list and dispatched on ' + today + '<br><br>';
+  emailBody += 'POD with remarks - reply to the email whcih is sent to respective traffic person <br><br>';
+  emailBody += 'Do not reply to this email <br><br>';
+  emailBody += 'BCC: branchpod@lobb.in <br><br>';
+  
+  emailBody += createHtmlTable1(emailData3, emailBackgrounds3) + '<br><br>';
+
+  emailBody += 'Thanks and regards,<br><br>';
+  emailBody += 'POD Department<br>';
+  emailBody += 'Lobb HO<br>';
+
+  // Send the email
+  MailApp.sendEmail({
+    to: 'pod@lobb.in',
+    bcc:'branchpod@lobb.in',//
+    subject: 'PODs processed - POD with Remarks as on ' + today,
+    htmlBody: emailBody,
+    attachments: [blob1]
+  });
+}
+
+//from this code i want to send two different email to different people.
+//the codes is set for one group is correct, the pending once marked with // 
+//has to be sent to other team
+//email to naveenkumar.m@lobb.in cc navin@lobb.in

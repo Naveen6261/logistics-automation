@@ -1,0 +1,45 @@
+function updateCourierStatusInAllSheets() {
+  // Source sheet ID and details
+  const sourceSpreadsheetId = "189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4";
+  const sourceSheetName = "Courier Inward";
+  const sourceCourierColumn = "C";
+
+  // Target spreadsheet ID and settings
+  const targetSpreadsheetId = "1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg";
+  const settingsSheetName = "Settings"; // The sheet where you list target sheet names
+  const targetSheetsRange = "A2:A20"; // Range in the settings sheet with target sheet names
+  const targetCourierColumn = "U";
+
+  // Open source spreadsheet and get courier data
+  const sourceSpreadsheet = SpreadsheetApp.openById(sourceSpreadsheetId);
+  const sourceSheet = sourceSpreadsheet.getSheetByName(sourceSheetName);
+  const sourceData = sourceSheet.getRange(sourceCourierColumn + "2:" + sourceCourierColumn + sourceSheet.getLastRow()).getValues();
+  
+  // Convert source courier numbers into a Set for quick lookup
+  const sourceCourierSet = new Set(sourceData.flat().filter(String)); // Flatten and filter out empty values
+
+  // Open target spreadsheet and get the settings sheet with target sheet names
+  const targetSpreadsheet = SpreadsheetApp.openById(targetSpreadsheetId);
+  const settingsSheet = targetSpreadsheet.getSheetByName(settingsSheetName);
+  const targetSheetNames = settingsSheet.getRange(targetSheetsRange).getValues().flat().filter(String); // Flatten and filter out empty values
+
+  // Loop through each target sheet name and update matching courier numbers
+  targetSheetNames.forEach(sheetName => {
+    const targetSheet = targetSpreadsheet.getSheetByName(sheetName);
+    if (targetSheet) {
+      const targetDataRange = targetSheet.getRange(targetCourierColumn + "2:" + targetCourierColumn + targetSheet.getLastRow());
+      const targetData = targetDataRange.getValues();
+      
+      // Loop through target data and update cells if the courier number exists in the source set
+      targetData.forEach((row, index) => {
+        const courierNumber = row[0];
+        if (courierNumber && sourceCourierSet.has(courierNumber)) {
+          const cell = targetSheet.getRange(targetCourierColumn + (index + 2));
+          const currentValue = cell.getValue();
+          const newValue = currentValue ? currentValue + ", Received" : "Received";
+          cell.setValue(newValue);
+        }
+      });
+    }
+  });
+}

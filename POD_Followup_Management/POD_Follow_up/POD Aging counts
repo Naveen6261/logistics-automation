@@ -1,0 +1,48 @@
+function calculateAgingCounts() {
+  const masterSheetName = "POD Master Data"; // Name of the master sheet
+  const targetCell = "H1"; // Cell to output the result
+  const sheetNames = ["Soni", "Reema", "Vasundhara", "Richa", "Samreen"]; // Names of sheets to aggregate data from
+
+  const ranges = [
+    { label: "0-3", minDays: 0, maxDays: 3 },
+    { label: "4-7", minDays: 4, maxDays: 7 },
+    { label: "8-14", minDays: 8, maxDays: 14 },
+    { label: "15-30", minDays: 15, maxDays: 30 },
+    { label: ">30", minDays: 31, maxDays: null }
+  ];
+
+  const today = new Date();
+  const agingCounts = { "0-3": 0, "4-7": 0, "8-14": 0, "15-30": 0, ">30": 0 };
+
+  // Loop through each sheet
+  sheetNames.forEach(sheetName => {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) return;
+
+    const data = sheet.getRange(2, 9, sheet.getLastRow() - 1).getValues(); // Assuming dates start from I2
+    data.forEach(row => {
+      const cellDate = new Date(row[0]);
+      if (isNaN(cellDate)) return; // Skip invalid dates
+      const diffDays = Math.floor((today - cellDate) / (1000 * 60 * 60 * 24));
+
+      // Add to the respective aging count
+      ranges.forEach(range => {
+        if (
+          (range.minDays === null || diffDays >= range.minDays) &&
+          (range.maxDays === null || diffDays <= range.maxDays)
+        ) {
+          agingCounts[range.label]++;
+        }
+      });
+    });
+  });
+
+  // Combine results into a single string
+  const result = ranges
+    .map(range => `${range.label}: ${agingCounts[range.label]}`)
+    .join(", ");
+
+  // Output result to the master sheet
+  const masterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(masterSheetName);
+  masterSheet.getRange(targetCell).setValue(result);
+}

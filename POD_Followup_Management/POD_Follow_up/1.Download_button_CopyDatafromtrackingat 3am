@@ -1,0 +1,146 @@
+function copyDataToDestination() {
+  var sourceSheet = SpreadsheetApp.openById("1cWcN1OAIg3gdU5zUTh70-XZwIB9h2oaAR2sAn0aAD7c").getSheetByName("Tracking Data");
+  var destinationSheet = SpreadsheetApp.openById("1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg").getSheetByName("POD Master Data");
+  var downloadLogsSheet = destinationSheet.getParent().getSheetByName("Download Logs");
+
+  var lastRowSource = sourceSheet.getLastRow();
+  var sourceDataRange = sourceSheet.getRange("A1:X" + lastRowSource);
+  var sourceData = sourceDataRange.getValues();
+  var sourceColumnK = sourceSheet.getRange("K1:K" + lastRowSource).getValues();
+  var sourceColumnAM = sourceSheet.getRange("AM1:AM" + lastRowSource).getValues();
+
+  var newData = [];
+  var updatedDates = [];
+  var currentTime = new Date(); // Current time
+  var formattedCurrentTime = Utilities.formatDate(currentTime, Session.getScriptTimeZone(), "d MMMM hh:mma"); // Format to "17th June 11:56am"
+  var formattedCurrentDate = Utilities.formatDate(currentTime, Session.getScriptTimeZone(), "dd/MMM/yyyy"); // Format to "21/Jun/2024"
+  var destinationStartRow = Math.max(destinationSheet.getLastRow() + 1, 4); // Start from row 4 or next available row, whichever is greater
+
+  Logger.log("Starting row in destination sheet: " + destinationStartRow);
+
+  var completedCount = 0;
+  var infoNotAvailableCount = 0;
+
+  for (var i = 0; i < sourceData.length; i++) {
+    // Check if column K contains "Completed", or "Info Not Available" and column AM is empty
+    if ((sourceColumnK[i][0] === "Completed" ||sourceColumnK[i][0] === "Info Not Available") && sourceColumnAM[i][0] === "") {
+      // Format the dates in dd/MMM/yyyy format
+      var loadingDate = Utilities.formatDate(new Date(sourceData[i][3]), Session.getScriptTimeZone(), "dd/MMM/yyyy");
+      var unloadingDate = sourceData[i][17] ? Utilities.formatDate(new Date(sourceData[i][17]), Session.getScriptTimeZone(), "dd/MMM/yyyy") : "Info Not Available"; // Check if unloading date is empty
+
+      var rowData = [
+        //COLUMN IN ORDER ASSIGNED
+      "",  // Blank Column A
+        formattedCurrentDate,  // B Current Date
+        sourceData[i][5],  // C Txn No
+        loadingDate,  // D Loading Date
+        sourceData[i][8],  // E From City
+        sourceData[i][9],  // F To City
+        sourceData[i][21],  // G transport name
+        sourceData[i][22],  // H trucker name
+        unloadingDate,  // I Expected Delivery Date
+        sourceData[i][2],  // J branch name
+        sourceData[i][6],  // K Truck No
+        "=VLOOKUP(H" + destinationStartRow + ",'Settings'!J:M,4,0)", // L VLOOKUP formula for trucker number
+        //'=IF(G1="iNFO nOT AVAILABLE",TODAY()-F1+3, TODAY()-G1)';
+        "=IFERROR($K$2-I" + destinationStartRow + ", $K$2-D" + destinationStartRow + ")",  // M POD Aging
+        sourceData[i][19], // N Order Received By
+        sourceData[i][20], // O Truck Placed By
+        "",  // Blank Column P POD received date from POD data
+        "",  // Blank Column Q POD followup Calling Response type
+        "",  // Blank Column R POD followup Calling Sub Status
+        "",  // Blank Column S Follow Up Details
+        "",  // Blank Column T Courier Name
+        "",  // Blank Column U POD Docket No
+        "",  // Blank Column V Collected date
+        "",  // Blank Column X Sent On Date
+        "",  // Blank Column Y Sent To Location
+        "",  // Blank Column Z Snooze Time 1-jun-2024 10:00 AM
+        sourceData[i][11]+" "+sourceData[i][12], // Y Sub Status and Remarks from tracking data
+        // sourceData[i][12], // Z Remarks        
+        "=VLOOKUP(H" + destinationStartRow + ",'Settings'!J:K,2,0)", // AA VLOOKUP formula for another column
+      ];
+
+      Logger.log("Adding row at destination row: " + destinationStartRow);
+      Logger.log("Row data: " + rowData.join(", "));
+
+      newData.push(rowData);
+      // Prepare the date update for column AM of source sheet
+      updatedDates.push([currentTime]);
+      destinationStartRow++; // Increment the row for the next entry
+
+      // Count statuses
+      if (sourceColumnK[i][0] === "Completed") {
+        completedCount++;
+            } else if (sourceColumnK[i][0] === "Info Not Available") {
+        infoNotAvailableCount++;
+      }
+    } else {
+      // Keep the existing value for column AM if it doesn't meet criteria
+      updatedDates.push([sourceColumnAM[i][0]]);
+    }
+  }
+
+  var numOfRowsCopied = newData.length;
+
+  if (numOfRowsCopied > 0) {
+    // Calculate the range to paste newData in destination sheet
+    var startRow = Math.max(destinationSheet.getLastRow() + 1, 4); // Start from row 4 or next available row, whichever is greater
+    var startColumn = 1;
+    var numRows = newData.length;
+    var numColumns = newData[0].length;
+    // Get the range in destination sheet and set values
+    var destinationRange = destinationSheet.getRange(startRow, startColumn, numRows, numColumns);
+    destinationRange.setValues(newData);
+
+    // Update column AM in the source sheet
+    var sourceColumnAMRange = sourceSheet.getRange("AM1:AM" + lastRowSource);
+    sourceColumnAMRange.setValues(updatedDates);
+
+    // Sort the entire destination sheet by column H from row 4 onwards
+    var lastRowDestination = destinationSheet.getLastRow();
+    if (lastRowDestination > 3) {
+      destinationSheet.getRange(4, 1, lastRowDestination - 3, destinationSheet.getLastColumn()).sort([{column: 3, ascending: true},{column: 8, ascending: true}]);
+    }
+
+    // Add log to "Download Logs" sheet
+    var logEntry = [formattedCurrentTime, numOfRowsCopied];
+    downloadLogsSheet.appendRow(logEntry);
+
+    // Send email notification
+    var subject = "POD follow up data added today " + Utilities.formatDate(currentTime, Session.getScriptTimeZone(), "dd/MM/yyyy");
+    var body = "Notification!\nSuccessfully added " + numOfRowsCopied + " trips to POD follow up data.\n\n" +
+               "Details:\n" +
+               "Completed: " + completedCount + "\n" +
+               "Info Not Available: " + infoNotAvailableCount + "\n\n" +
+               "Date and time: " + formattedCurrentTime + "\n\n" +
+               "Thanks and regards\nLobb Truck Central Solutions";
+    MailApp.sendEmail({
+      //to: "naveenkumar.m@lobb.in", // testing
+      //cc: "NAVEENKUMAR.M@lobb.in", // testing
+
+      to: "naveenkumar.m@lobb.in,samreen.tamboli@lobb.in,harish.gupta@lobb.in",
+      cc: "mylari.gupta@lobb.in",
+      subject: subject,
+      body: body
+    });
+  } else {
+    Logger.log("No data matching criteria found in source sheet.");
+  }
+}
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Download')
+    .addItem('Copy data from tracking sheet', 'copyDataToDestination')
+    .addToUi();
+}
+
+appscript.JSON
+{
+  "timeZone": "Asia/Kolkata",
+  "dependencies": {
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}

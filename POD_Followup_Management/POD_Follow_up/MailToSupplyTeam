@@ -1,0 +1,274 @@
+var Txn_numberCol;
+var loading_dateCol;
+var from_cityCol;
+var to_cityCol;
+var Transporter_nameCol;
+var trucker_nameCol;
+var branchCol;
+var vehicle_numberCol;
+var Pod_ageingCol;
+var order_byCol;
+var Placed_byCol;
+var Response_TypeCol;
+var Sub_StatusCol;
+var Mail_Sent_To_BranchCol;
+
+
+function AssignHeaderColumnNumbers() {
+
+  var headerRow = 3;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+
+  var headerData = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  TxnnumberCol =  headerData.indexOf("Txn_number") + 1;
+  loading_dateCol =  headerData.indexOf("loading_date") + 1;
+  from_cityCol =  headerData.indexOf("from_city") + 1;
+  to_cityCol =  headerData.indexOf("to_city") + 1;
+  TransporternameCol =  headerData.indexOf("Transporter_name") + 1;
+  trucker_nameCol =  headerData.indexOf("trucker_name") + 1;
+  branchCol =  headerData.indexOf("branch") + 1;
+  vehicle_numberCol =  headerData.indexOf("vehicle_number") + 1;
+  PodageingCol =  headerData.indexOf("Pod_ageing") + 1;
+  orderbyCol =  headerData.indexOf("order_by") + 1;
+  PlacedbyCol =  headerData.indexOf("Placed_by") + 1;
+  ResponseTypeCol =  headerData.indexOf("Response_Type") + 1;
+  SubStatusCol =  headerData.indexOf("Sub_Status") + 1;
+  MailSentToBranchCol =  headerData.indexOf("Mail_Sent_To_Branch") + 1;
+
+}
+
+function ButtonSendMail() {
+
+  // assign column numbers to global variables
+  AssignHeaderColumnNumbers();
+
+  var headerRow = 3;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var activeRange = sheet.getActiveRange();
+  var activeRow = activeRange.getRow();
+  var lastRow = sheet.getLastRow();
+
+  if (activeRow <= headerRow || activeRow > lastRow) {
+    showMessageBoxOK("Warning", "Selected row " + activeRow + ", Select a row that has follow up data");
+    return;
+  }
+
+  var mailSentOn = sheet.getRange(activeRow, MailSentToBranchCol).getValue();
+  if (mailSentOn !== "") {
+    if (!responseYesNoDialog("Mail already sent", "Do you want to send again")) {
+      return;
+    }
+  }
+
+  SendEmail(activeRow, sheet);
+
+  // update sheet with sent data/time and user name
+  var userName = Session.getActiveUser().getEmail();
+  userName = userName.replace("@lobb.in", "");
+  userName ="";
+  var sentDateTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd-MM-yyyy HH:mm:ss");
+  sheet.getRange(activeRow, MailSentToBranchCol).setValue(mailSentOn + " ; " + userName + ": " + sentDateTime);
+
+}
+// ----------------------------
+function SendEmail(activeRow, sheet) {
+
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+
+  // get tracking data values
+  var branchName = sheet.getRange(activeRow, branchCol).getValue();
+  if (branchName === null) {
+    showMessageBoxOK("Warning; Branch Name missing; Select a row that has tracking data");
+    return;
+  }
+
+  var responseType = sheet.getRange(activeRow, ResponseTypeCol).getValue();
+  if (!CheckResponseType(responseType)) {
+    showMessageBoxOK("You can not send mail for respons type : " + responseType + ", hence not sending mail");    
+    return ;
+  }
+  var subStatus = sheet.getRange(activeRow, SubStatusCol).getValue();
+  var loadingDate = sheet.getRange(activeRow, loading_dateCol).getValue();
+  var transcation = sheet.getRange(activeRow, TxnnumberCol).getValue();
+  var truckNo = sheet.getRange(activeRow, vehicle_numberCol).getValue();
+  var truckerName = sheet.getRange(activeRow, trucker_nameCol).getValue();
+  var fromCity = sheet.getRange(activeRow, from_cityCol).getValue();
+  var toCity = sheet.getRange(activeRow, to_cityCol).getValue();
+  var orderReceivedBy = sheet.getRange(activeRow, orderbyCol).getValue();
+  var truckPlacedBy = sheet.getRange(activeRow, PlacedbyCol).getValue();
+  var Podageing = sheet.getRange(activeRow, PodageingCol).getValue();
+  var Transportername = sheet.getRange(activeRow, TransporternameCol).getValue();
+  var Txnnumber = sheet.getRange(activeRow, TxnnumberCol).getValue();
+  var subStatus = sheet.getRange(activeRow, SubStatusCol).getValue();
+
+  var ccEmail = worksheetFunctionQuery(settingsSheet, "B:D", "B", "D", branchName);
+  if (!ccEmail || ccEmail === "") {
+    showMessageBoxOK("Warning; Branch Name is invalid or CC Mail is blank;Inform your Team Lead or Manager to fix the data");
+    return;
+  }
+
+  var orderReceivedByEmail = worksheetFunctionQuery(settingsSheet, "B:G", "F", "G", orderReceivedBy);
+  if (!orderReceivedByEmail || orderReceivedByEmail === "") {
+    showMessageBoxOK("Warning; Order Received By Name is invalid, sent email to branch manager");
+    orderReceivedByEmail = ccEmail;
+  }
+
+  var truckPlacedByEmail = worksheetFunctionQuery(settingsSheet, "B:G", "F", "G", truckPlacedBy);
+  if (!truckPlacedByEmail || truckPlacedByEmail === "") {
+    showMessageBoxOK("Warning; Truck Placed By Name is invalid, sent email to branch manager");
+    truckPlacedByEmail = ccEmail;
+  }
+
+  if (orderReceivedByEmail == truckPlacedByEmail) {
+    recipientEmail = orderReceivedByEmail; // both orderReceivedByMail and truckPlacedByEmail IDs are not avilalbe
+  } else {
+    recipientEmail = orderReceivedByEmail + ";" + truckPlacedByEmail;
+  }
+
+  if (loadingDate instanceof Date) {
+    var loadingDateStr = loadingDate = Utilities.formatDate(loadingDate, Session.getScriptTimeZone(), "dd-MM-yyyy");
+  } else {
+    var loadingDateStr = loadingDate;
+  }
+
+  var subject = branchName + "Transaction " + transcation + ", POD Status : " + responseType;
+
+  var body = "Dear " + getFormattedName(truckPlacedByEmail) + ",\n\n";
+  body = body + GetRandomMailBodyFirst() + "\n\n";
+  body = body.replace("ZZZZ", Podageing);
+  body = body + "Transaction Number : " + Txnnumber + "\n";
+  body = body + "Loading Date            : " + loadingDateStr + "\n";
+  body = body + "Truck Number           : " + truckNo + "\n";
+  body = body + "Route                        : " + fromCity + " To " + toCity + "\n";
+  body = body + "Trucker                     : " + truckerName + "\n";
+  body = body + "Response                 : " + responseType + "\n";
+  body = body + "Remarks                   : " + subStatus + "\n\n";
+  body = body + GetRandomMailBodySecond();
+  body = body.replace(/XXXX/g, "the transporter " + Transportername);
+  body = body.replace(/YYYY/g, "the trucker " + truckerName);
+  body = body + "\n\n\n";
+  body = body + "Thanks and regards \n" + getFormattedName(Session.getActiveUser().getEmail()) + "\n";
+  body = body + "(POD Follow Up Team)";
+
+
+  // Create the draft email
+  var draft = GmailApp.createDraft(
+    recipientEmail,
+    subject,
+    body, {
+      cc: ccEmail + ";" + ";samreen.tamboli@lobb.in"
+    }
+  );
+}
+
+function DoNothing() {
+  showMessageBoxOK("Wait", "Sending Mail Not Enabled !");
+}
+
+function GetRandomMailBodyFirst() {
+
+var str = 
+"We have followed up with the trucker several times. In spite of that, we could not collect the subject POD from the trucker. It is pending for more than ZZZZ days. The details of the trip are as follows;" +
+"We are not able to get POD from YYYY even after several follow-ups. Requesting you to contact the trucker at your earliest convenience and collect the POD as it is pending for more than ZZZZ days. The details of the trip are as follows;" +
+"Despite repeated follow-ups with the trucker, we have still not received the POD. It has been overdue for more than ZZZZ days. Please find the trip details below;" +
+"We have reached out to YYYY multiple times to collect the POD, but it remains pending. Kindly contact the trucker at the earliest to secure the POD, as it has been outstanding for over ZZZZ days. The trip details are as follows;" +
+"We made several attempts to obtain the POD from the trucker; however, it has not yet been received. The delay has now exceeded ZZZZ days. Below are the relevant trip details;" +
+"Even after numerous follow-ups, the POD from YYYY is still pending. We kindly request your assistance in reaching out to the trucker to collect the POD as it has been overdue for ZZZZ days. Trip details are provided below;" +
+"We have continuously tried to collect the POD from the trucker, but without success. The POD has been pending for over ZZZZ days. Please refer to the trip details below;" +
+"Despite multiple reminders, we have not succeeded in obtaining the POD from the trucker. It has been pending for more than ZZZZ days. The trip details are as follows;" +
+"Our repeated attempts to collect the POD from YYYY have not been successful. We request you to coordinate with the trucker promptly, as the POD is overdue by ZZZZ days. Please see the trip details below;" +
+"We have tried several times to retrieve the POD from the trucker, but it remains outstanding. It has now been pending for over ZZZZ days. The details of the trip are as follows.";
+
+  
+  var itemsArray = str.split(";"); 
+  var randomIndex = Math.floor(Math.random() * itemsArray.length);
+  return randomElement = itemsArray[randomIndex];
+  
+}
+
+function GetRandomMailBodySecond() {
+
+var str = 
+"As it's essential to submit the POD to XXXX, please ensure you collect it from YYYY. Keep us updated on your follow-up efforts and notify us once you’ve obtained the POD.;" +
+"As the POD needs to be submitted to XXXX, kindly reach out to YYYY to collect it. Please update us on the follow-up status and inform us once the POD is received.;" +
+"Given that the POD needs to be sent to XXXX, please get in touch with YYYY to obtain it. Keep us posted on the follow-up status and inform us when the POD is received.;" +
+"Please contact YYYY to get the POD, as it needs to be submitted to XXXX. We request an update on the follow-up status and confirmation once the POD is received.;" + 
+"Since the POD must be submitted to XXXX, please connect with YYYY to secure it. Let us know the status of your follow-up and confirm if the POD has been obtained.;" +
+"Since the POD submission to XXXX is pending, please contact YYYY to retrieve it. Please update us on your follow-up efforts and let us know when the POD is secured.;"+
+"Since the submission of the POD to XXXX is required, please reach out to YYYY for collection. Kindly update us on your progress and let us know once the POD is in hand.;" +
+"The POD is required to be submitted to XXXX. Kindly coordinate with YYYY to collect it and keep us informed on the follow-up progress as well as the receipt of the POD.;" +
+"The POD needs to be provided to XXXX, so please coordinate with YYYY for its collection. Kindly keep us informed of the follow-up status and confirm upon receipt of the POD.;" +
+"To submit the POD to XXXX, please liaise with YYYY to collect it. We would appreciate updates on your follow-up activities and confirmation upon receipt of the POD."
+
+  var itemsArray = str.split(";"); 
+  var randomIndex = Math.floor(Math.random() * itemsArray.length);
+  return randomElement = itemsArray[randomIndex];
+  
+}
+
+function worksheetFunctionQuery(settingsSheet, queryRange, equateCol, selectCol, equateKey){
+
+  var formulaCell = settingsSheet.getRange('L2');
+  var queryFormula = "=QUERY(" + queryRange +", + \"SELECT " + selectCol + " WHERE " + equateCol + " = " + "'" + equateKey + "'" +" \" , 0)";
+
+  formulaCell.setFormula(queryFormula);
+  var formula = formulaCell.getValue();
+  if (formula && formula.charAt(0) === "#") {
+    formulaResult ="";
+  }
+  else {  
+     var formulaResult = formulaCell.getValue();
+     return formulaResult;
+      }
+}
+
+function showMessageBoxOK(messageToShow) {
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert(messageToShow, ui.ButtonSet.OK);
+  return result;
+}
+
+function showMessageBoxOK(messageToShow1, messageToShow2) {
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert(messageToShow1 + " " + messageToShow2, ui.ButtonSet.OK);
+  return result;
+}
+
+
+function responseYesNoDialog(title, question) {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.alert( title,question,ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES){
+     return true;
+  }
+  else{
+     return false;
+  }
+}
+
+function getFormattedName(email) {
+  // Get the active user's email
+  //var email = Session.getActiveUser().getEmail();
+  
+  // Extract the username (part before '@')
+  var userName = email.split("@")[0];
+  
+  // Split the username by ".", capitalize each part, and join them with a space
+  var formattedName = userName.split(".")
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+  
+  return formattedName;
+}
+
+function CheckResponseType(responseType){
+
+if ((responseType == "Not Responsive") ||  (responseType == "Payment Issue" ) ||  (responseType == "POD Lost")) {
+       return true;
+   }
+   else{
+        return false;
+   }
+  
+}

@@ -1,0 +1,170 @@
+function sendEmailWithSummary() {
+  if (shouldSendReport()) {
+    // Call the function to send the email
+    iftruesendEmailWithSummary();
+  } else {
+    Logger.log("Email not sent: Today is either a holiday or Sunday.");
+  }
+}
+
+function shouldSendReport() {
+  var today = new Date();
+  var dayOfWeek = today.getDay();
+  var holidays = [
+    '2024-01-01', // New Year's Day
+    '2024-12-25', // Christmas
+    '2024-05-01', // May Day
+    '2024-08-15', // Independence Day
+    '2024-09-07', // Ganesh Chaturthi
+    '2024-10-02', // Gandhi Jayanti
+    '2024-10-11', // Durga Puja/Dasara/Vijaya Dashmi
+    '2024-11-02', // Deepavali
+    '2024-12-25', // Christmas Day
+    // Add more holidays here in the format 'YYYY-MM-DD'
+  ];
+  
+  var formattedDate = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  
+  // Check if today is Sunday (getDay() returns 0 for Sunday)
+  if (dayOfWeek === 0) {
+    return false;
+  }
+  
+  // Check if today is a holiday
+  if (holidays.indexOf(formattedDate) !== -1) {
+    return false;
+  }
+  
+  return true;
+}
+
+
+function iftruesendEmailWithSummary(){
+var resu=doSendEmailWithSummary("dhanush.nk@lobb.in,lingaraj.ops@lobb.in,bhavani.ops@lobb.in,pooja.r@lobb.in");
+var resu=doSendEmailWithSummary("naveenkumar.m@lobb.in");
+}
+
+function doSendEmailWithSummary(toAddress) {
+  var emailSheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+  var emailSheetName = 'Email';
+  var untraceableSheetId = '13xKfUISBZrDtE4UdwI-4zASYqVSWhpFPdkiIWLduCwE';
+  var untraceableSheetName = 'Untraceable POD';
+
+  var today = new Date().toDateString(); // Format date as Thu Jul 04 2024
+
+  // Fetch data from Untraceable POD sheet
+  var untraceableSheet = SpreadsheetApp.openById(untraceableSheetId).getSheetByName(untraceableSheetName);
+  var summaryTable = untraceableSheet.getRange('C1:E1').getValues();
+  var summaryValue = untraceableSheet.getRange('A1').getValue();
+  
+  // Calculate counts
+  var totalPODs = untraceableSheet.getRange('A2:A').getValues().filter(String).length;
+  var claimedPODs = untraceableSheet.getRange('E2:E').getValues().filter(row => row[0].includes('Claimed')).length;
+
+  // Fetch data from Email sheet (first pivot)
+  var emailSheet = SpreadsheetApp.openById(emailSheetId).getSheetByName(emailSheetName);
+  var emailData1 = emailSheet.getRange('A2:E' + emailSheet.getLastRow()).getValues();
+  var emailBackgrounds1 = emailSheet.getRange('A2:E' + emailSheet.getLastRow()).getBackgrounds();
+  
+  // Fetch data from Email sheet (second pivot)
+  //var emailData2 = emailSheet.getRange('H1:J' + emailSheet.getLastRow()).getValues();
+  //var emailBackgrounds2 = emailSheet.getRange('H1:J' + emailSheet.getLastRow()).getBackgrounds();
+
+  // Fetch data from Email sheet (N:X range)
+  var csvData = emailSheet.getRange('N1:X' + emailSheet.getLastRow()).getValues();
+  var csvDataFiltered = csvData.filter(row => row.some(cell => cell !== ""));
+
+  // Function to create HTML table from data
+  function createHtmlTableX(data, backgrounds) {
+    var html = '<table border="1" style="border-collapse: collapse;">';
+    data.forEach(function(row, rowIndex) {
+      if (row.some(cell => cell !== "")) { // Only add rows with at least one non-empty cell
+        html += '<tr>';
+        row.forEach(function(cell, colIndex) {
+          var backgroundColor = backgrounds[rowIndex][colIndex];
+          var cellValue = String(cell).replace(/\n/g, '<br>');
+          html += '<td style="padding: 5px; background-color: ' + backgroundColor + ';">' + cellValue + '</td>';
+        });
+        html += '</tr>';
+      }
+    });
+    html += '</table>';
+    return html;
+  }
+
+  // Function to create CSV from data
+  function createCsvX(data) {
+    var csv = '';
+    data.forEach(function(row) {
+      csv += row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',') + '\n';
+    });
+    return csv;
+  }
+
+  var csvContent = createCsv(csvDataFiltered);
+  var blob = Utilities.newBlob(csvContent, 'text/csv', 'POD_Summary.csv');
+
+  // Create the email body
+  var emailBody = 'Dear All,<br><br>';
+  emailBody += 'Please find the attached POD details dispatched on ' + today + '<br><br>';
+  emailBody += `Note Untraceable POD's total ${totalPODs} - Claimed ${claimedPODs} TXn no. pending to be updated by branch<br><br>`;
+  emailBody += 'Request to Immediately check and advise TXN number with respective POD.<br><br>';
+  emailBody += 'Below link - Gsheet- required branch team confirmation regarding the untraceable POD.<br>';
+  emailBody += 'If the Branch team has checked the POD list and does not pertain to the branch mark in excel as checked.<br>';
+  emailBody += 'If it belongs to your branch, mark our branch and update TXN no in column F.<br><br>';
+  emailBody += '<a href="https://docs.google.com/spreadsheets/d/13xKfUISBZrDtE4UdwI-4zASYqVSWhpFPdkiIWLduCwE/edit#gid=0">Gsheet Link</a><br><br>';
+  emailBody += 'Summary<br><br>';
+  
+  emailBody += 'Untraceable POD Summary:<br>';
+  emailBody += createHtmlTable(summaryTable, [[null, null, null]]) + '<br>';
+  emailBody += 'Total Untraceable PODs: ' + summaryValue + '<br><br>';
+
+  emailBody += 'POD Dispatched to branch :<br>';
+  emailBody += createHtmlTable(emailData1, emailBackgrounds1) + '<br><br>';
+
+  //emailBody += 'Second Pivot Table from Email Sheet:<br>';
+  //emailBody += createHtmlTable(emailData2, emailBackgrounds2) + '<br><br>';
+   
+
+  emailBody += 'BCC POD Branch, Venu & Jayaram <br><br><br><br>';
+  emailBody += 'Thanks and regards,<br><br>';
+  emailBody += 'POD Department<br>';
+  emailBody += 'Lobb HO<br>';
+
+  // Send the email
+
+  MailApp.sendEmail({
+    to: toAddress,
+    subject: 'POD Uploaded Summary Today ' + today,
+    htmlBody: emailBody,
+    attachments: [blob]
+  });
+  
+}
+
+ // Function to create HTML table from data
+  function createHtmlTable(data, backgrounds) {
+    var html = '<table border="1" style="border-collapse: collapse;">';
+    data.forEach(function(row, rowIndex) {
+      if (row.some(cell => cell !== "")) { // Only add rows with at least one non-empty cell
+        html += '<tr>';
+        row.forEach(function(cell, colIndex) {
+          var backgroundColor = backgrounds[rowIndex][colIndex];
+          var cellValue = String(cell).replace(/\n/g, '<br>');
+          html += '<td style="padding: 5px; background-color: ' + backgroundColor + ';">' + cellValue + '</td>';
+        });
+        html += '</tr>';
+      }
+    });
+    html += '</table>';
+    return html;
+  }
+
+  // Function to create CSV from data
+  function createCsv(data) {
+    var csv = '';
+    data.forEach(function(row) {
+      csv += row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',') + '\n';
+    });
+    return csv;
+  }

@@ -1,0 +1,87 @@
+//Version 2 Created on 20March 2025 add the date Explicit Conversion of Strings to Dates:
+//if (typeof dateValue === "string") {
+//  dateValue = new Date(dateValue);
+//}
+//to updated logic
+//Object.prototype.toString.call(dateValue) === "[object Date]" && !isNaN(dateValue.getTime())
+
+function moveRowsWithDateToArchive() {
+  try {
+    var sourceSheetId = "1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg"; 
+    var destinationSheetId = "1sp1xIDwxUA8vVZ3-Fx7beR59I2pidTZbFpZnUN8yvoM";
+    var destinationSheetName = "Archive";
+    var summarySheetName = "Retrieval Summary";
+    var settingsSheetName = "Settings";
+
+    var settingsSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(settingsSheetName);
+    var destinationSheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(destinationSheetName);
+    var summarySheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(summarySheetName);
+
+    var lastRowSettings = settingsSheet.getLastRow();
+    var sheetNames = settingsSheet.getRange("A2:A" + lastRowSettings).getValues().flat().filter(String);
+
+    var timestamp = new Date();
+    var timestampString = Utilities.formatDate(timestamp, Session.getScriptTimeZone(), "dd/MMM/yyyy hh:mm a");
+
+    var totalRowsMoved = 0;
+    var emailBody = "Notification!\n\n";
+
+    for (var j = 0; j < sheetNames.length; j++) {
+      var sourceSheetName = sheetNames[j];
+      var sourceSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(sourceSheetName);
+
+      if (!sourceSheet) continue;
+
+      var startRow = 4;
+      var lastRow = sourceSheet.getLastRow();
+      if (lastRow < startRow) continue;
+
+      var rangeToSort = sourceSheet.getRange(startRow, 1, lastRow - startRow + 1, sourceSheet.getLastColumn());
+      rangeToSort.sort({ column: 16, ascending: true });
+
+      var data = rangeToSort.getValues();
+      var rowsToDelete = [];
+
+      for (var i = 0; i < data.length; i++) {
+        var dateValue = data[i][15]; // Column P (Index 15)
+
+        // Convert to date if it's a string
+        if (typeof dateValue === "string") {
+          dateValue = new Date(dateValue);
+        }
+
+        if (Object.prototype.toString.call(dateValue) === "[object Date]" && !isNaN(dateValue.getTime())) {
+          data[i].push(timestampString);
+          destinationSheet.appendRow(data[i]);
+          rowsToDelete.push(startRow + i);
+          totalRowsMoved++;
+        }
+      }
+
+      if (rowsToDelete.length > 0) {
+        for (var k = rowsToDelete.length - 1; k >= 0; k--) {
+          sourceSheet.deleteRow(rowsToDelete[k]);
+        }
+
+        summarySheet.insertRowBefore(1);
+        summarySheet.getRange("A1").setValue("Total TXN's moved: " + rowsToDelete.length + " from " + sourceSheetName + " " + timestampString);
+        emailBody += sourceSheetName + ": " + rowsToDelete.length + " rows\n";
+      }
+    }
+
+    if (totalRowsMoved > 0) {
+      emailBody += "\nTotal rows moved: " + totalRowsMoved + "\n\nhttps://docs.google.com/spreadsheets/d/" + destinationSheetId + "/edit  \n\nThanks and regards,\nLobb";
+
+      MailApp.sendEmail({
+        to: "Naveenkumar.m@lobb.in",
+        cc: "naveenkumar.m@lobb.in",
+        subject: totalRowsMoved + "-TXN's - POD Followup Completed - " + timestampString,
+        body: emailBody
+      });
+    } else {
+      Logger.log("No data moved.");
+    }
+  } catch (error) {
+    Logger.log("Error: " + error.message);
+  }
+}

@@ -1,0 +1,88 @@
+function sendTruckerEscalationEmails() {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheets = ["Pooja Feedback", "Ragini Feedback"];
+    var settingsSheet = ss.getSheetByName("settings");
+    var settingsData = settingsSheet.getDataRange().getValues();
+    var emailLog = [];
+    
+    sheets.forEach(function(sheetName) {
+        var sheet = ss.getSheetByName(sheetName);
+        if (!sheet) {
+            Logger.log("Sheet " + sheetName + " not found");
+            return;
+        }
+        
+        var data = sheet.getDataRange().getValues();
+        var headers = data[4]; // Row 5 (index 4) contains headers
+        var requiredColumns = ["Branch", "Txn_No", "Loading_Date", "From City", "To_City", "Transporter_Name", "Trucker_Name", "REMARK", "Overall_Rating"];
+        var checkColumns = ["Pickup_Location", "Freight_Rate", "Eway_Bill", "Loading_Details", "Loading_Delay", "LR_Document", "Advance_Payment", "Deduction_Explanation", "Unexpected_Deductions", "Balance_Payment", "Unloading_Location", "Entry_Gate_Delays", "Additional_Weight", "Charges_Disclosure", "Reporting_Damages", "Damage_Response", "Halting_Communication", "Unloading_Delays", "Unloading_Contact", "Reimbursement"];
+        
+        var colIndex = {};
+        headers.forEach((h, i) => colIndex[h] = i);
+        
+        if (!colIndex["Txn_No"] || !colIndex["Branch"] || !colIndex["MailSentOn"]) {
+            Logger.log("Missing required columns in " + sheetName);
+            return;
+        }
+        
+        for (var i = 5; i < data.length; i++) { // Start from row 6 (index 5)
+            var row = data[i];
+            if (row[colIndex["MailSentOn"]]) continue; // Skip if email already sent
+            if (row[colIndex["Report_to_branch"]] != 1) continue; // Check if report is needed
+            
+            var emailBody = "Branch: " + row[colIndex["Branch"]] + "\n";
+            emailBody += "Txn_No: " + row[colIndex["Txn_No"]] + "\n";
+            
+            requiredColumns.forEach(function(col) {
+                if (colIndex[col] !== undefined && row[colIndex[col]]) {
+                    emailBody += col + ": " + row[colIndex[col]] + "\n";
+                }
+            });
+            
+            var flaggedIssues = checkColumns.filter(col => colIndex[col] !== undefined && row[colIndex[col]] === "No")
+                                           .map(col => "- " + col + ": No");
+            
+            if (flaggedIssues.length > 0) {
+                emailBody += "\nThe following issues were reported:\n" + flaggedIssues.join("\n") + "\n";
+            }
+            
+            emailBody += "\nPlease contact the trucker and appraise the trucker on the action taken.\n";
+            emailBody += "Inform us the action taken with date for updating our records.";
+            
+            var recipient = findEmail(settingsData, row[colIndex["Order_Received_By"]]);
+            var ccEmails = getCCEmails(settingsData, row[colIndex["Branch"]]);
+            ccEmails.push("naveenkumar.m@lobb.in");
+            
+            if (!recipient) {
+                emailLog.push([sheetName, row[colIndex["Txn_No"]], "Recipient email not found"]);
+                continue;
+            }
+            
+            var subject = "Trucker Feedback (Trip ID " + row[colIndex["Txn_No"]] + ") Required Resolution";
+            
+            GmailApp.createDraft(recipient, subject, emailBody, {cc: ccEmails.join(",")});
+            
+            sheet.getRange(i + 1, colIndex["MailSentOn"] + 1).setValue(Session.getActiveUser().getEmail() + ";" + new Date());
+        }
+    });
+    
+    Logger.log("Draft emails created successfully!");
+}
+
+function findEmail(settingsData, name) {
+    for (var i = 0; i < settingsData.length; i++) {
+        if (settingsData[i][8] === name) return settingsData[i][9]; // Column I (name) and J (email)
+    }
+    return "";
+}
+
+function getCCEmails(settingsData, branch) {
+    var emails = [];
+    for (var i = 0; i < settingsData.length; i++) {
+        if (settingsData[i][0] === branch) {
+            if (settingsData[i][3]) emails.push(settingsData[i][3]); // Column D
+            if (settingsData[i][7]) emails.push(settingsData[i][7]); // Column H
+        }
+    }
+    return emails;
+}

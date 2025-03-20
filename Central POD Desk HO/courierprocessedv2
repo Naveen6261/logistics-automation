@@ -1,0 +1,126 @@
+function sendStyledCourierProcessedEmailv3() {
+  var ss = SpreadsheetApp.openById("189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4");
+  var inwardSheet = ss.getSheetByName("Courier Inward");
+  var processedSheet = ss.getSheetByName("POD Processed");
+  var summarySheet = ss.getSheetByName("Summary");
+  var today = new Date();
+
+  if (today.getDay() === 0) { // Skip Sundays
+    Logger.log("Today is Sunday. Email will not be sent.");
+    return;
+  }
+
+  var todayFormatted = Utilities.formatDate(today, "GMT+0530", "M/d/yyyy");
+  var yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  var yesterdayFormatted = Utilities.formatDate(yesterday, "GMT+0530", "M/d/yyyy");
+
+  var pendingOlderThanYesterday = 0;
+  var receivedCourierToday = 0;
+  var processedCourierToday = 0;
+  var couriersReceivedAfter5PM = 0;
+  var totalPending = 0;
+  
+  var inwardData = inwardSheet.getRange("A1:G" + inwardSheet.getLastRow()).getValues();
+  for (var i = 1; i < inwardData.length; i++) {
+    var row = inwardData[i];
+    var receivedDate = new Date(row[0]);
+    var receivedDateTime = new Date(row[1]);
+    var pendingStatus = row[6];
+    var receivedDateFormatted = Utilities.formatDate(receivedDate, "GMT+0530", "M/d/yyyy");
+
+    if (receivedDateFormatted === todayFormatted && receivedDateTime.getHours() < 17) {
+      receivedCourierToday++;
+    }
+    if (receivedDateFormatted === todayFormatted && receivedDateTime.getHours() >= 17) {
+      couriersReceivedAfter5PM++;
+    }
+    if (pendingStatus === 1) {
+      totalPending++;
+      if (receivedDateFormatted < yesterdayFormatted) {
+        pendingOlderThanYesterday++;
+      }
+    }
+  }
+
+  var processedData = processedSheet.getRange("E1:I" + processedSheet.getLastRow()).getValues();
+  var processedSet = new Set();
+  for (var j = 1; j < processedData.length; j++) {
+    if (Utilities.formatDate(new Date(processedData[j][4]), "GMT+0530", "M/d/yyyy") === todayFormatted) {
+      processedSet.add(processedData[j][0]);
+    }
+  }
+  processedCourierToday = processedSet.size;
+
+  var pendingCourierYesterday = summarySheet.getRange("Z2").getValue();
+  if (!pendingCourierYesterday) {
+    pendingCourierYesterday = totalPending + processedCourierToday - receivedCourierToday;
+  }
+  var pendingCourierToday = pendingCourierYesterday + receivedCourierToday - processedCourierToday;
+
+  summarySheet.getRange("Z2").setValue(pendingCourierToday);
+
+  var subject = "Courier Processed Report";
+  if (pendingCourierToday === 0) {
+    subject += " - Cleanest Desk";
+  } else if (pendingCourierToday <= 3) {
+    subject += ` - Clean Desk (${pendingCourierToday})`;
+  } else {
+    subject += ` - Pending Couriers (${pendingCourierToday})`;
+  }
+
+  var emailBody = `<p><strong style="font-size: 16px; color: #4CAF50;">Courier Processed Report</strong></p>`;
+  emailBody += `<table border="1" cellpadding="5" style="border-collapse: collapse; width: 50%; margin-bottom: 20px;">
+                  <thead>
+                    <tr style="background-color: #2196F3; color: #ffffff; font-weight: bold;">
+                      <th style="text-align: left; padding: 8px;">Metric</th>
+                      <th style="text-align: right; padding: 8px;">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Pending Older than Yesterday (a)</td><td style="text-align: right;">${pendingOlderThanYesterday}</td></tr>
+                    <tr><td>Pending Courier Yesterday (b)</td><td style="text-align: right;">${pendingCourierYesterday}</td></tr>
+                    <tr><td>Received Courier Today (c)</td><td style="text-align: right;">${receivedCourierToday}</td></tr>
+                    <tr><td>Processed Courier Today (d)</td><td style="text-align: right;">${processedCourierToday}</td></tr>
+                    <tr><td>Pending Courier Today (e)=b+c-d</td><td style="text-align: right;">${pendingCourierToday}</td></tr>
+                    <tr><td>Couriers Received After 5 PM</td><td style="text-align: right;">${couriersReceivedAfter5PM}</td></tr>
+                  </tbody>
+                </table>`;
+  
+  emailBody += `<p><strong>Courier Details:</strong></p><table border="1" cellpadding="5" style="border-collapse: collapse; width: 50%; margin-bottom: 20px;">
+                  <thead>
+                    <tr style="background-color: #FFC107; color: #000; font-weight: bold;">
+                      <th style="text-align: left; padding: 8px;">Date</th>
+                      <th style="text-align: left; padding: 8px;">Courier Numbers</th>
+                    </tr>
+                  </thead>
+                  <tbody>`;
+  
+  var courierDetails = {};
+  for (var k = 1; k < inwardData.length; k++) {
+    var receivedDate = Utilities.formatDate(new Date(inwardData[k][0]), "GMT+0530", "M/d/yyyy");
+    var courierNum = inwardData[k][2] + " - " + inwardData[k][3];
+    if (!courierDetails[receivedDate]) {
+      courierDetails[receivedDate] = [];
+    }
+    courierDetails[receivedDate].push(courierNum);
+  }
+  
+  for (var date in courierDetails) {
+    emailBody += `<tr><td>${date}</td><td>${courierDetails[date].join(", ")}</td></tr>`;
+  }
+  emailBody += `</tbody></table>`;
+
+  emailBody += `<p>Thanks and Regards,<br>
+                  <strong>POD Team</strong><br>
+                  <em>Auto-generated message from Google Sheets.</em></p>`;
+
+  MailApp.sendEmail({
+    to: "naveenkumar.m@lobb.in",
+    cc: "naveenkumar.m@lobb.in",
+    subject: subject,
+    htmlBody: emailBody
+  });
+
+  Logger.log("Email sent successfully.");
+}
