@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+  </head>
+  <body>
+    <h2>Search Courier Inward Entries</h2>
+    <form id="searchForm">
+      <label for="searchTerm">Enter the search term from column C:</label><br><br>
+      <input type="text" id="searchTerm" name="searchTerm"><br><br>
+      <input type="button" value="Search" onclick="search()">
+    </form>
+    <br>
+    <div id="results"></div>
+    <script>
+      function search() {
+        const searchTerm = document.getElementById('searchTerm').value;
+        google.script.run.withSuccessHandler(displayResults).searchEntries(searchTerm);
+      }
+
+      function displayResults(results) {
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '';
+        if (results.length > 0) {
+          let html = '<table border="1">';
+          results.forEach(row => {
+            html += '<tr>';
+            row.forEach(cell => {
+              html += `<td>${cell}</td>`;
+            });
+            html += '</tr>';
+          });
+          html += '</table>';
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = 'No results found.';
+        }
+      }
+    </script>
+  </body>
+</html>

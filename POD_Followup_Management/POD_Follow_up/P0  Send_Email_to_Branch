@@ -1,0 +1,409 @@
+//common script for email from active sheet
+function sendPODPendingEmails() {
+  var activeSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  
+  // Check if the active sheet is one of the team member sheets
+  var isTeamMemberSheet = /^Team Member \d+$/.test(activeSheet.getName());
+  if (isTeamMemberSheet) {
+    // If it's a team member sheet, run the script specific to that sheet
+    sendEmailsFromSheet(activeSheet);
+  } else if (activeSheet.getName() === 'POD Master Data') {
+    // If it's the "POD Master Data" sheet, run the script for that sheet
+    sendEmailsFromSheet(activeSheet);
+  } else {
+    // If it's neither a team member sheet nor the "POD Master Data" sheet, show an error message
+    SpreadsheetApp.getUi().alert('Please run this script from one of the following sheets: Team Member 1, Team Member 2, Team Member 3, Team Member 4, Team Member 5, POD Master Data');
+  }
+}
+
+function sendEmailsFromSheet(sheet) {
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Settings');
+  var settingsData = settingsSheet.getDataRange().getValues();
+  var sheetData = sheet.getDataRange().getValues();
+  
+  var emailIndex = getColumnIndexByName(settingsData, 'Email');
+  var ccIndex = getColumnIndexByName(settingsData, 'CC');
+  var subjectIndex = getColumnIndexByName(settingsData, 'Subject');
+  var bodyIndex = getColumnIndexByName(settingsData, 'Body');
+  
+  if (emailIndex === -1) {
+    SpreadsheetApp.getUi().alert('Email column not found in settings.');
+    return;
+  }
+
+  if (ccIndex === -1) {
+    SpreadsheetApp.getUi().alert('CC column not found in settings.');
+    return;
+  }
+
+  if (subjectIndex === -1) {
+    SpreadsheetApp.getUi().alert('Subject column not found in settings.');
+    return;
+  }
+
+  if (bodyIndex === -1) {
+    SpreadsheetApp.getUi().alert('Body column not found in settings.');
+    return;
+  }
+  
+  for (var i = 1; i < sheetData.length; i++) {
+    var rowData = sheetData[i];
+    var emailAddress = rowData[emailIndex];
+    var ccEmail = rowData[ccIndex];
+    var subject = rowData[subjectIndex];
+    var body = rowData[bodyIndex];
+    
+    // Check if email address is provided
+    if (emailAddress) {
+      MailApp.sendEmail({
+        to: emailAddress,
+        cc: ccEmail,
+        subject: subject,
+        body: body
+      });
+    }
+  }
+}
+
+function getColumnIndexByName(data, columnName) {
+  var headers = data[0];
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i].trim() === columnName) {
+      return i;
+    }
+  }
+  return -1; // Column not found
+}
+//'--------------------------------------------------------------------------------------'
+function PreparePendingPODsData() {
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const settingsSheet = ss.getSheetByName('Settings');
+  const sheetNames = settingsSheet.getRange(2, 1, 4).getValues().flat();
+  
+ 
+  // Delete rows
+  let tempSheet = ss.getSheetByName('Pending POD Data for Mail');
+  const lastRow = tempSheet.getLastRow();
+  if (lastRow > 1) {
+    tempSheet.deleteRows(2, lastRow - 1);
+  }
+
+
+  let combinedData = [];    // Create an array to store the data
+  
+  sheetNames.forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (sheet) {
+      const dataRange = sheet.getRange(3, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+      const data = dataRange.getValues();
+      
+      data.forEach(row => {
+          //combinedData.push([row[9], row[2],row[3],row[10],row[4],row[5],row[7],row[12],row[13],row[14], row[16], row[17], row[18],row[21]]); 
+          combinedData.push([row[9], row[2],row[3],row[10],row[4],row[5],row[7],row[11],row[12],row[13],row[14], row[16], row[17], row[18],row[15]]);  // added phone number - row[11]
+
+      });
+    }
+  });
+
+  // Write the combined data to the temp sheet
+  if (combinedData.length > 0) {
+    tempSheet.getRange(2, 1, combinedData.length, combinedData[0].length).setValues(combinedData);
+    
+    // sort data
+    tempSheet.getRange(2, 1, combinedData.length, combinedData[0].length)
+             .sort([{column: 1, ascending: true}, {column: 8, ascending: true}, {column: 3, ascending: true}]);
+  }
+}
+
+
+function sendPendingPODMailsToBranches() { 
+
+  // sheets set up
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var menuSheet = ss.getSheetByName("Menu");
+  var podDataSheet = ss.getSheetByName("Pending POD Data for Mail");
+  var tempSheet = ss.getSheetByName("Temp"); 
+
+  // data set up
+  var menuStartingRow = 5;
+  var menuStartingColumn = 4;
+  var menuColumns = 4;
+  var menuData = menuSheet.getRange(menuStartingRow, 
+                                    menuStartingColumn, 
+                                    menuSheet.getLastRow() - menuStartingColumn, 
+                                    menuStartingColumn+menuColumns).getValues(); 
+
+
+  var menuDataLength = menuData.length;
+  var pendingDays = menuSheet.getRange('B18').getValue(); 
+  var filterRequired = menuSheet.getRange('B15').getValue();
+  var filterOn = menuSheet.getRange('B16').getValue();
+
+
+  // processing for branches
+  for (var i = 0; i < menuDataLength; i++) {
+      var branchName = menuData[i][0];  // Column D (Branch Name)
+      var selectionFlag = menuData[i][1]; // Column E (Flag)
+      var emailID = menuData[i][2]; // Column F (Email)
+      var ccEmailID = menuData[i][3]; // Column G (CC Email)
+      var addresseeName = menuData[i][4]; // Column H (address Name)
+    if (selectionFlag.toUpperCase() == "Y") {
+        var lastRow = podDataSheet.getLastRow();
+        var lastCol = podDataSheet.getLastColumn();
+        var podData = podDataSheet.getRange(1, 1, lastRow, lastCol).getValues();
+      //var podData = podDataSheet.getDataRange().getValues(); // Get all data from the sheet
+
+     // var x=podData[1000][1];
+      var filteredData = GetFilteredData(filterOn, filterRequired, podData, branchName, pendingDays);
+      var filteredDataLength = filteredData.length;
+      
+      // If filtered data has only the header row, skip to the next branch
+      if (filteredDataLength <= 1) continue;
+    
+      // Create the email draft
+      var pendingPODs = filteredData.length - 1; // reduce header
+      var statusText = (filterOn === "None") ? " Status : " + filterOn : ""; 
+      var mailSubject = branchName + " Pending PODs as of " + GetFormattedDate() + statusText;
+      var mailBody = "Dear " + addresseeName+ ", \n\n";
+
+      if (pendingPODs > 10){ // attach POD file to the mail
+        var attachmentType = true;
+        mailBody = CreateMailBody(mailBody,attachmentType,pendingPODs,pendingDays,filteredData);
+        //var excelBlob = ConvertSheetToExcel(ss.getId(), tempSheet.getSheetId(), 3, branchName);
+
+        var excelBlob = createExcelFromArray(filteredData, branchName);
+        GmailApp.createDraft(emailID, mailSubject, mailBody, {
+                 attachments: [excelBlob],
+                 cc: ccEmailID // Include CC Email ID
+        });
+      }
+      else{  // embed POD data as a html table
+        var attachmentType = false;
+        mailBody = CreateMailBody(mailBody,attachmentType, pendingPODs,pendingDays,filteredData);
+
+        GmailApp.createDraft(emailID, mailSubject, '', { 
+        htmlBody: mailBody, // HTML content for the email
+        cc: ccEmailID 
+        });
+      }
+    }
+  }
+} // end of branch
+
+function createExcelFromArray(filteredData, branchName) {
+  try {
+    // Create a new temporary spreadsheet (no need for .xlsx here)
+    var fileName = branchName + "_Pending_PODs"; 
+    var tempSpreadsheet = SpreadsheetApp.create(fileName);
+    var tempSheet = tempSpreadsheet.getActiveSheet();
+
+    // Check if filteredData has data
+    if (filteredData && filteredData.length > 0) {
+      // Write the array data to the temporary sheet
+      tempSheet.getRange(1, 1, filteredData.length, filteredData[0].length).setValues(filteredData);
+
+      // Ensure data is flushed to the sheet
+      SpreadsheetApp.flush();
+
+      // Get the file ID of the Google Sheet
+      var fileId = tempSpreadsheet.getId();
+
+      // Export the Google Sheet as an Excel file using the Drive API
+      var url = "https://docs.google.com/spreadsheets/d/" + fileId + "/export?format=xlsx";
+      var params = {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + ScriptApp.getOAuthToken()
+        },
+        muteHttpExceptions: true
+      };
+
+      // Make a request to download the Excel file
+      var response = UrlFetchApp.fetch(url, params);
+
+      if (response.getResponseCode() === 200) {
+        var excelBlob = response.getBlob().setName(fileName + ".xlsx");
+
+        // Delete the temporary Google Sheet
+        DriveApp.getFileById(fileId).setTrashed(true);
+
+        return excelBlob; // Return the Excel blob
+      } else {
+        throw new Error("Failed to export Google Sheet as Excel. Response Code: " + response.getResponseCode());
+      }
+    } else {
+      throw new Error("No data to write to the Excel file.");
+    }
+  } catch (error) {
+    Logger.log("Error creating Excel from array: " + error.message);
+    return null; // Return null or handle the error appropriately
+  }
+}
+
+function createExcelFromArray1(filteredData, branchName) {
+  // Create a new temporary spreadsheet
+  var fileName = branchName + "_Pending_PODs";
+  var tempSpreadsheet = SpreadsheetApp.create(fileName);
+  var tempSheet = tempSpreadsheet.getActiveSheet();
+  
+  // Write the array data to the temporary sheet
+  tempSheet.getRange(1, 1, filteredData.length, filteredData[0].length).setValues(filteredData);
+  
+  // Convert the temporary spreadsheet to a blob as Excel format
+  var excelBlob = DriveApp.getFileById(tempSpreadsheet.getId()).getBlob().setName(fileName + ".xlsx");
+  
+  // Delete the temporary spreadsheet
+  DriveApp.getFileById(tempSpreadsheet.getId()).setTrashed(true);
+  
+  return excelBlob; // Return the Excel blob
+}
+
+function ConvertSheetToExcel(ssId, sheetId, attempts, branchName) {
+  var url = "https://docs.google.com/spreadsheets/d/" + ssId + "/export?format=xlsx&gid=" + sheetId;
+  var token = ScriptApp.getOAuthToken();
+  
+  for (var i = 0; i < attempts; i++) {
+    try {
+      var response = UrlFetchApp.fetch(url, {
+        headers: {
+          'Authorization': 'Bearer ' + token
+        }
+      });
+      return response.getBlob().setName(branchName + "_Pending_PODs.xlsx");
+    } catch (e) {
+      if (e.message.indexOf("Request failed") !== -1 && e.message.indexOf("429") !== -1) {
+        // If rate limit error occurs, wait and retry
+        Utilities.sleep(5000); // Wait for 5 seconds before retrying
+      } else {
+        // Log and throw error if it's not a rate limit error
+        Logger.log("Error converting sheet to Excel: " + e.message);
+        throw e;
+      }
+    }
+  }
+  throw new Error("Failed to convert sheet to Excel after multiple attempts.");
+}
+
+function  GetFormattedDate(){
+  var today = new Date();
+  var day = ('0' + today.getDate()).slice(-2);
+  var month = ('0' + (today.getMonth() + 1)).slice(-2); 
+  var year = today.getFullYear();
+  return day + "/" + month + "/" + year;
+}
+
+function GetFilteredData(filterOn, filterRequired, podData, branchName, pendingDays){
+  var filteredData;
+  if (filterRequired !="As Selected Below") {
+        var filteredData = podData.filter(function(row, index) {
+        return index === 0 || (row[0] == branchName && row[8] > pendingDays  && row[14]=== "");  // filter on branch, age>pending days and collected date blank
+      });
+
+  } else {
+              var filteredData = podData.filter(function(row, index) {
+              return index === 0 || (row[0] == branchName && row[12]=== filterOn && row[8] > pendingDays);  
+              });
+         }
+  return filteredData;
+}
+
+function CreateMailBody(mailBody,attachmentType, pendingPODs,pendingDays,filteredData){
+
+    if (attachmentType){
+      mailBody = mailBody + "Please find attached the pending PODs for your branch that are more than " + pendingDays + " days. There are about " + pendingPODs + " PODs to be followed up for receipt.";
+      mailBody = mailBody + "/n/nThanks and Regards, /n" + SenderName();
+    }
+    else{ // no attchment, attach data as an html table
+      mailBody = mailBody + "<br><br>Following  are the pending PODs for your branch that are more than " + pendingDays + " days.<br><br>"; 
+      mailBody = mailBody + createHtmlTable(filteredData);
+      mailBody = mailBody + "<br><br>There are about " + pendingPODs + " PODs to be followed up for receipt.";
+      mailBody = mailBody + "<br><br>Thanks and Regards, <br>" + SenderName();
+    }
+  return mailBody;
+}
+
+function SenderName() {
+  var emailID = Session.getActiveUser().getEmail();
+  var namePart = emailID.split('@')[0];
+  
+  // Split the name part by "." to separate first and last names
+  var nameParts = namePart.split('.');
+  
+  // Capitalize first letter of each name and join them with a space
+  var formattedName = nameParts.map(function(part) {
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join(' ');
+
+  return formattedName;
+}
+
+function createHtmlTable(data) {
+  var html = '<table border="1" style="border-collapse: collapse;">';
+
+  data.forEach(function(row, rowIndex) {
+    if (row.some(cell => cell !== "")) { // Only add rows with at least one non-empty cell
+      html += '<tr>';
+
+      row.forEach(function(cell) {
+        var cellValue = String(cell).replace(/\n/g, '<br>');
+
+        // Apply styles to the first row (header)
+        if (rowIndex === 0) {
+          html += '<td style="padding: 5px; background-color: green; color: yellow;">' + cellValue + '</td>';
+        } else {
+          html += '<td style="padding: 5px;">' + cellValue + '</td>';
+        }
+      });
+
+      html += '</tr>';
+    }
+  });
+
+  html += '</table>';
+  return html;
+}
+
+function sendMailsToBranches() {
+
+  // sheets set up
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var menuSheet = ss.getSheetByName("Menu");
+
+
+
+  // data set up
+  var generalSubjectLine = menuSheet.getRange("N5").getValue();
+  var generalMailBody = menuSheet.getRange("N6").getValue();
+
+  var menuStartingRow = 5;
+  var menuStartingColumn = 4;
+  var menuColumns = 4;
+  var menuData = menuSheet.getRange(menuStartingRow, 
+                                    menuStartingColumn, 
+                                    menuSheet.getLastRow() - menuStartingColumn, 
+                                    menuStartingColumn+menuColumns).getValues(); 
+  var menuDataLength = menuData.length;
+
+  // processing for branches
+  for (var i = 0; i < menuDataLength; i++) {
+      var branchName = menuData[i][0];  // Column D (Branch Name)
+      var selectionFlag = menuData[i][1]; // Column E (Flag)
+      var emailID = menuData[i][2]; // Column F (Email)
+      var ccEmailID = menuData[i][3]; // Column G (CC Email)
+      var addresseeName = menuData[i][4]; // Column H (address Name)
+
+      var replacementTextAAAA = menuSheet.getRange(i+menuStartingRow,16).getValue();
+      generalMailBody = generalMailBody.replace("AAAA", replacementTextAAAA);
+      var replacementTextBBBB = menuSheet.getRange(i+menuStartingRow,17).getValue();
+      generalMailBody = generalMailBody.replace("BBBB", replacementTextBBBB);      
+
+    if (selectionFlag.toUpperCase() == "Y") {
+      var mailBody = "Dear " + addresseeName+ ", \n\n";
+      mailBody = mailBody + generalMailBody + "\n" + SenderName();
+      GmailApp.createDraft(emailID, generalSubjectLine, mailBody, {
+                 cc: ccEmailID
+        });
+      }
+    }
+} // end of branch

@@ -1,0 +1,99 @@
+function sendEmail_podSummary() {
+
+// Fetch the data ranges sheet Email 
+  var sheet = SpreadsheetApp.openById('189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4').getSheetByName('Email');
+  var body1 = sheet.getRange('AJ2:AO9').getValues();
+  var table2 = sheet.getRange('Z10:AG16').getValues();
+  var table3 = sheet.getRange('Z1:AG8').getValues();
+  var table4 = sheet.getRange('Z18:AD26').getValues();
+  
+
+
+// Fetch the data ranges sheet summary 
+var sheet = SpreadsheetApp.openById('189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4').getSheetByName('Summary');
+  var table1 = sheet.getRange('A3:E36').getValues();
+  
+
+  // Filter out empty rows
+  table1 = filterEmptyRows(table1);
+  table2 = filterEmptyRows(table2);
+  table3 = filterEmptyRows(table3);
+  table4 = filterEmptyRows(table4);
+
+  // Format the data into HTML tables
+  var body1Html = arrayToHtmlTable(body1);
+  var table1Html = arrayToHtmlTable(table1);
+  var table2Html = arrayToHtmlTable(table2);
+  var table3Html = arrayToHtmlTable(table3);
+  var table4Html = arrayToHtmlTable(table4);
+
+  // Construct the email body
+  var emailBody = `
+    <p>${body1Html}</p>
+    <p>${table1Html}</p>
+    <p>${table2Html}</p>
+    <p>${table3Html}</p>
+    <p>${table4Html}</p>
+  `;
+
+  // Send the email
+  MailApp.sendEmail({
+    to: 'naveenkumar.m@lobb.in',
+    cc: 'lingaraj.ops@lobb.in,bhavani.ops@lobb.in,dhanush.nk@lobb.in',
+    subject: 'POD Upload/Entered status Update',
+    htmlBody: emailBody
+  });
+}
+
+// Helper function to convert a 2D array to an HTML table
+function arrayToHtmlTable(array) {
+  var html = '<table border="1" cellpadding="5" cellspacing="0">';
+  for (var i = 0; i < array.length; i++) {
+    html += '<tr>';
+    for (var j = 0; j < array[i].length; j++) {
+      var cell = array[i][j];
+      if (cell instanceof Date) {
+        cell = formatDate(cell);
+      }
+      html += '<td>' + cell + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+// Helper function to format date
+function formatDate(date) {
+  var options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+  return date.toLocaleDateString('en-US', options).replace(',', '');
+}
+
+// Helper function to filter out empty rows
+function filterEmptyRows(array) {
+  return array.filter(row => row.some(cell => cell !== ''));
+}
+
+// Set up the triggers
+function createTimeDrivenTriggers_podSummary() {
+  // Delete any existing triggers to avoid duplicates
+  deleteTriggers_podSummary();
+
+  // Create triggers at 11 AM, 2 PM, 4 PM, 5 PM, and 6 PM
+  ScriptApp.newTrigger('sendEmail_podSummary').timeBased().atHour(11).everyDays(1).create();
+  ScriptApp.newTrigger('sendEmail_podSummary').timeBased().atHour(14).everyDays(1).create();
+  ScriptApp.newTrigger('sendEmail_podSummary').timeBased().atHour(16).everyDays(1).create();
+  ScriptApp.newTrigger('sendEmail_podSummary').timeBased().atHour(17).everyDays(1).create();
+  ScriptApp.newTrigger('sendEmail_podSummary').timeBased().atHour(18).everyDays(1).create();
+}
+
+// Delete existing triggers
+function deleteTriggers_podSummary() {
+  var allTriggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < allTriggers.length; i++) {
+    var trigger = allTriggers[i];
+    if (trigger.getHandlerFunction() === 'sendEmail_podSummary') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  }
+}

@@ -1,0 +1,25 @@
+//Testing stage Demo Sheet
+//Test Assign Truckers to teammates in settings sheet only
+function updateSettingsSheet() {
+  var settingsSheet = SpreadsheetApp.openById("1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg").getSheetByName("Settings");
+
+  var lastRowSettings = settingsSheet.getLastRow();
+  var truckerNamesRange = settingsSheet.getRange("J2:K" + lastRowSettings).getValues(); // Assuming trucker names are in column J and corresponding values in column K
+
+  truckerNamesRange.forEach(function(row) {
+    var truckerName = row[0];
+    var defaultValue = row[1];
+
+    if (truckerName && !defaultValue && defaultValue.trim() === "") {
+      var firstLetter = truckerName.trim().charAt(0).toUpperCase();
+
+      if (firstLetter >= 'A' && firstLetter <= 'K') {
+        settingsSheet.getRange("A2").setValue(truckerName);
+      } else if (firstLetter >= 'L' && firstLetter <= 'S') {
+        settingsSheet.getRange("A3").setValue(truckerName);
+      } else if (firstLetter >= 'T' && firstLetter <= 'Z') {
+        settingsSheet.getRange("A4").setValue(truckerName);
+      }
+    }
+  });
+}

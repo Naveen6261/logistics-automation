@@ -1,0 +1,105 @@
+function syncDatafrompodreceived() {
+  var sourceSheetId = "189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4"; // Source spreadsheet ID
+  var sourceSheetName = "POD Processed"; // Source sheet name
+  var destSheetId = "1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg"; // Destination spreadsheet ID
+  var settingsSheetName = "Settings"; // Settings sheet name
+  var podMasterDataSheetName = "POD Master Data"; // Additional sheet name
+
+  var startTime = new Date().getTime(); // Track script start time
+
+  // Open the source sheet and get data once
+  var sourceSpreadsheet = SpreadsheetApp.openById(sourceSheetId);
+  var sourceSheet = sourceSpreadsheet.getSheetByName(sourceSheetName);
+  var sourceData = sourceSheet.getDataRange().getValues();
+
+  // Open the settings sheet to get the list of destination sheet names
+  var settingsSheet = SpreadsheetApp.openById(destSheetId).getSheetByName(settingsSheetName);
+  var sheetNames = settingsSheet.getRange("A2:A10").getValues().flat().filter(Boolean); // Get sheet names from A2:A10 and remove any empty values
+  sheetNames.push(settingsSheet.getRange("A20").getValue()); // Add sheet name from A20
+
+  // Initialize an object to store counts of synced data
+  var syncedDataCounts = {};
+
+  // Iterate through each destination sheet
+  sheetNames.forEach(function(destSheetName) {
+    var destSpreadsheet = SpreadsheetApp.openById(destSheetId);
+    var destSheet = destSpreadsheet.getSheetByName(destSheetName);
+
+    if (!destSheet) {
+      Logger.log("Destination sheet not found: " + destSheetName);
+      return;
+    }
+
+    var destData = destSheet.getRange(4, 1, destSheet.getLastRow() - 3, destSheet.getLastColumn()).getValues(); // Get data from row 4 onwards
+    var destLookup = {};
+
+    // Create a lookup map for destination data based on column C (index 2)
+    for (var i = 0; i < destData.length; i++) {
+      var destValue = destData[i][2]; // index 2 is column c for transaction number
+      if (destValue) {
+        destLookup[destValue] = i + 4; // Store row number for later use
+      }
+    }
+
+    // Initialize count for this sheet
+    syncedDataCounts[destSheetName] = 0;
+
+    var updates = []; // Array to store updates
+
+    // Process each row in source data and sync to destination
+    for (var j = 0; j < sourceData.length; j++) {
+      var srcValue = sourceData[j][3];
+      var srcDate = sourceData[j][1]; // Assuming index 1 contains the date in the source sheet
+
+      if (srcValue && srcDate) {
+        var formattedDate = formatDate(srcDate);
+
+        if (destLookup[srcValue] !== undefined) {
+          var destIdx = destLookup[srcValue] - 4; // Convert row number back to array index
+          if (destData[destIdx].length < 16) { //16 is column p for pod collected date entry
+            for (var k = destData[destIdx].length; k < 16; k++) { //16 is column p for pod collected date entry
+              destData[destIdx].push("");
+            }
+          }
+          destData[destIdx][15] = formattedDate; // Set formatted date to destination data 15 is index for column p
+          updates.push({ row: destIdx + 4, values: destData[destIdx] });
+
+          // Increment count for this destination sheet
+          syncedDataCounts[destSheetName]++;
+        }
+      }
+    }
+
+    // Apply all updates in one go if there are any
+    if (updates.length > 0) {
+      var updateValues = updates.map(function(update) { return update.values; });
+      var startRow = updates[0].row;
+      destSheet.getRange(startRow, 1, updateValues.length, updateValues[0].length).setValues(updateValues);
+    }
+  });
+
+  // Send email with counts of synced data
+  sendSyncCompleteEmail(syncedDataCounts);
+
+  var endTime = new Date().getTime(); // Track script end time
+  Logger.log("Script execution time: " + (endTime - startTime) + " ms");
+}
+
+// Function to send email with count of synced data
+function sendSyncCompleteEmail(syncedDataCounts) {
+  var email = "naveenkumar.m@lobb.in"; // Change to recipient's email address
+  var subject = "Sync complete POD received count";
+  var body = "Sync process complete. Counts of synced data:\n\n";
+
+  for (var sheetName in syncedDataCounts) {
+    body += sheetName + ": " + syncedDataCounts[sheetName] + "\n";
+  }
+
+  MailApp.sendEmail(email, subject, body);
+}
+
+// Function to format date in dd/MMM/yyyy format
+function formatDate(date) {
+  var formattedDate = Utilities.formatDate(new Date(date), Session.getScriptTimeZone(), "dd/MMM/yyyy");
+  return formattedDate;
+}

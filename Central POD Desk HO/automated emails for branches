@@ -1,0 +1,174 @@
+function sendEmailsBasedOnColumnX() {
+  try {
+    var spreadsheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+    var sheetName = 'POD Processed';
+    var settingsSheetName = 'Settings';
+    var folderId = '1tXeYc6VbuIwKTjWPOEAa_wKUp1h3Fz_8';
+    var tcSheetId = '1PjBU4LN2WoUrBi4w-p1omLFCtfMmtyLeUi9o7Xh5dAw';
+    var tcSheetName = 'T_C_D';
+
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(sheetName);
+    var settingsSheet = ss.getSheetByName(settingsSheetName);
+    var tcSheet = SpreadsheetApp.openById(tcSheetId).getSheetByName(tcSheetName);
+
+    var dataRange = sheet.getDataRange().getValues();
+    var settingsData = settingsSheet.getDataRange().getValues();
+    var tcDataRange = tcSheet.getDataRange().getValues();
+    
+    var settingsEmailMap = {};
+    var settingsBranchEmailMap = {};
+
+    // Map names and emails from settings sheet (I for names, J for emails)
+    for (var i = 1; i < settingsData.length; i++) {
+      var name = settingsData[i][8]; // Column I for names
+      var email = settingsData[i][9]; // Column J for emails
+      settingsEmailMap[name] = email;
+
+      var branchName = settingsData[i][0]; // Column A for branch names
+      var branchEmail = settingsData[i][7]; // Column H for branch emails
+      settingsBranchEmailMap[branchName] = branchEmail;
+    }
+
+    for (var i = 1; i < dataRange.length; i++) {
+      var valueU = dataRange[i][23]; // Column X (index 23)
+      var valueV = dataRange[i][24]; // Column Y (index 24)
+
+      if (valueU === 1 && valueV === '') { // Proceed only if X=1 and Y is blank
+        var txnNo = dataRange[i][3].toString(); // Column D for txn no
+        var branchName = dataRange[i][6]; // Column G for branch name
+        var subjectLine = dataRange[i][15]; // Column P for the remarks from POD processed sheet 
+
+        // Custom subject format
+        var subject = `Urgent: ${branchName} ${txnNo} Shortage/Damage Mentioned :  ${subjectLine}`;
+
+        var podReceivedDate = formatDate(new Date(dataRange[i][1])); // Column B for POD received date
+        var courierBarcodeNumber = dataRange[i][4]; // Column E for Courier/Barcode number
+        var valueK = dataRange[i][10]; // Column K
+        var valueL = dataRange[i][11]; // Column L
+
+        var toEmails = [];
+        if (settingsBranchEmailMap[branchName]) toEmails.push(settingsBranchEmailMap[branchName]);
+
+        // Ensure ccEmails array includes POD@lobb.in and additional emails
+        var ccEmails = ['POD@lobb.in,ranjan.jena@lobb.in,samreen.tamboli@lobb.in,accounts@lobb.in']; // Initialize with POD@lobb.in
+        var namesNotAdded = [];
+
+        // Check names in columns T and U from T_C_D sheet
+        var orderReceivedBy = ''; 
+        var truckPlacedBy = ''; 
+
+        for (var j = 1; j < tcDataRange.length; j++) {
+          if (tcDataRange[j][5].toString().trim() === txnNo) { // Column F (index 5) in "T_C_D"
+            orderReceivedBy = tcDataRange[j][19]; // Column T (index 19)
+            truckPlacedBy = tcDataRange[j][20]; // Column U (index 20)
+            break; 
+          }
+        }
+
+        if (settingsEmailMap[orderReceivedBy]) {
+          ccEmails.push(settingsEmailMap[orderReceivedBy]);
+        } else {
+          namesNotAdded.push(`Order Received By: ${orderReceivedBy}`); // Log if order received by name is not found
+        }
+
+        if (settingsEmailMap[truckPlacedBy]) {
+          ccEmails.push(settingsEmailMap[truckPlacedBy]);
+        } else {
+          namesNotAdded.push(`Truck Placed By: ${truckPlacedBy}`); // Log if truck placed by name is not found
+        }
+
+        // Ensure txnNo is exactly 5/6 digits before proceeding
+        if (/^\d{5,6}$/.test(txnNo)) {
+          var tcValues = "";
+          var found = false; // Flag to check if the trip details were found
+
+          for (var j = 1; j < tcDataRange.length; j++) {
+            if (tcDataRange[j][5].toString().trim() === txnNo) { // Column F (index 5) in "T_C_D"
+              tcValues += `Loading Date: ${formatDate(new Date(tcDataRange[j][3]))}<br> \n`; // Column D (index 3)
+              tcValues += `Truck No: ${tcDataRange[j][6]}<br> \n`; // Column G (index 6)
+              tcValues += `From City: ${tcDataRange[j][8]}<br> \n`; // Column I (index 8)
+              tcValues += `To City: ${tcDataRange[j][9]}<br> \n`; // Column J (index 9)
+              tcValues += `<strong>Transporter Name: ${tcDataRange[j][21]}</strong><br> \n`; // Column V (index 21)
+              tcValues += `<strong>Trucker Name: ${tcDataRange[j][22]} </strong><br> \n`; // Column W (index 22)
+              tcValues += `<strong>Traffic Person Name: ${tcDataRange[j][19]} </strong><br> \n`; // Column T (index 20)
+
+              found = true;
+              break;
+            }
+          }
+
+          if (!found) {
+            tcValues = "Trip details not found.";
+            sheet.getRange(i + 1, 25).setValue(tcValues); // Mark column Y with "Trip details not found."
+            continue; // Skip drafting the email if trip details are not found
+          }
+        } else {
+          tcValues = "Transaction number is not valid.";
+          sheet.getRange(i + 1, 25).setValue(tcValues); // Mark column Y with the error message
+          continue; // Skip drafting the email if transaction number is invalid
+        }
+
+        var body = `<p>Dear Branch Team,</p>
+<p>Please be informed remarks mentioned in the <strong>POD</strong>:</p>
+<p><strong>${subjectLine}</strong></p>
+<p>Trip ID: ${txnNo}<br>
+POD received date: ${podReceivedDate}<br>
+${valueK} Document number: ${valueL} (Scan copy is attached)<br>
+${tcValues}</p>
+<p>This matter requires immediate attention. Please take up the issue with the transporter to understand the root cause and discuss the financial implications, including any costs payable or receivable as soon as possible. It is crucial that this matter is resolved promptly to avoid any further discrepancies.</p>
+<p><span style="background-color: yellow;">Please update the LOBB Office by entering the estimated value of deductions for truckers.</span></p>
+<p>Thank you for your prompt action on this matter.</p>
+<p>Thanks and Regards,<br>
+Centralized POD<br>
+Lobb HO</p>`;
+
+
+        // Find the attachment in the folder
+        var folder = DriveApp.getFolderById(folderId);
+        var files = folder.getFiles();
+        var attachment = null;
+
+        while (files.hasNext()) {
+          var file = files.next();
+          if (file.getName().includes(txnNo)) {
+            attachment = file;
+            break;
+          }
+        }
+
+        if (attachment) {
+          try {
+            GmailApp.createDraft(toEmails.join(','), subject, '', {
+              cc: ccEmails.join(','),
+              attachments: [attachment],
+              htmlBody: body
+            });
+
+            // Log names not added and timestamp in column Y after sending
+            var userEmail = Session.getActiveUser().getEmail();
+            var logMessage = namesNotAdded.length > 0
+              ? `Names not added: ${namesNotAdded.join(', ')} - ${userEmail} - ${new Date()}`
+              : `Email sent successfully - ${userEmail} - ${new Date()}`;
+            sheet.getRange(i + 1, 25).setValue(logMessage);
+
+          } catch (emailError) {
+            // Log emails that failed to be sent in column Y with timestamp
+            sheet.getRange(i + 1, 25).setValue('Email sending failed: ' + emailError.message + ' ' + new Date());
+          }
+
+        } else {
+          // Log attachment not found in column Y
+          Logger.log('Attachment not found for TXN No: ' + txnNo);
+          sheet.getRange(i + 1, 25).setValue('Attachment not found ' + new Date());
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('Error occurred: ' + e.toString());
+  }
+}
+
+function formatDate(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'dd-MM-yyyy');
+}

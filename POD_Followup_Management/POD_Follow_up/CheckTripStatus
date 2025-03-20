@@ -1,0 +1,29 @@
+//code 
+function checkTripAvailability() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  var settingsSheet = ss.getSheetByName("Settings");
+  const txnSheet = ss.getSheetByName("Transaction Sheet");
+  //const txnNumbers = txnSheet.getRange(2, 4, txnSheet.getLastRow() - 1).getValues().flat();  
+  const txnNumbers = new Set(txnSheet.getRange(2, 1, txnSheet.getLastRow() - 1).getValues().flat());
+
+  var followupArray = settingsSheet.getRange(2, 1, 4, 1).getValues().map(function(row) {
+    return row[0]; // Access the first element of each row
+  });
+
+  for (var i = 0; i < followupArray.length; i++) {
+    var element = followupArray[i];
+    CheckTrips(followupArray[i], txnSheet, txnNumbers)
+  }
+}
+
+function CheckTrips(sheetName, txnSheet, txnNumbers){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();  
+  var followupSheet = ss.getSheetByName(sheetName);
+
+  const results = txnNumbers.map(trip => txnNumbers.has(trip) ? "Available" : "Not Available");
+
+  // Write results to column B in Sheet A
+  sheetA.getRange(2, 2, results.length).setValues(results.map(res => [res]));
+}
+

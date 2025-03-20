@@ -1,0 +1,126 @@
+function XsendPendingPODMailsToBranches1() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const podDataSheet = ss.getSheetByName("Pending POD Data for Mail");
+  const menuSheet = ss.getSheetByName("Menu");
+
+  // Read menu and branch data
+  const menuData = menuSheet.getRange(5, 4, menuSheet.getLastRow() - 4, 5).getValues(); // Branch, Flag, Email, CC, Addressee
+  const pendingDays = menuSheet.getRange("B18").getValue(); // Pending days threshold
+
+  menuData.forEach((row) => {
+    const [branchName, selectionFlag, emailID, ccEmailID, addresseeName] = row;
+
+    if (selectionFlag && selectionFlag.toUpperCase() === "Y") {
+      const podData = podDataSheet.getDataRange().getValues();
+      Logger.log(`Total Rows in POD Data Sheet: ${podData.length}`);
+
+      // Filter the data for this branch
+      const filteredData = filterPODData(podData, branchName, pendingDays);
+      Logger.log(`Rows after filtering for branch "${branchName}": ${filteredData.length}`);
+
+      if (filteredData.length > 1) {
+        const pendingPODs = filteredData.length - 1; // Exclude header
+        const emailSubject = `${branchName} Pending PODs as of ${formatDate(new Date())}`;
+        let emailBody = `Dear ${addresseeName},<br><br>`;
+
+        if (pendingPODs > 10) {
+          // Attach POD data as an Excel file
+          emailBody += `Please find attached the pending PODs for your branch (${branchName}) that are more than ${pendingDays} days. There are about ${pendingPODs} PODs to follow up on.<br><br>`;
+          const excelBlob = createExcel(filteredData, `${branchName}_Pending_PODs`);
+          GmailApp.createDraft(emailID, emailSubject, "", {
+            attachments: [excelBlob],
+            htmlBody: emailBody,
+            cc: ccEmailID,
+          });
+        } else {
+          // Include POD data as a table in the email
+          emailBody += `Following are the pending PODs for your branch (${branchName}) that are more than ${pendingDays} days:<br><br>`;
+          emailBody += createHtmlTable(filteredData);
+          emailBody += `<br>There are about ${pendingPODs} PODs to follow up on.<br><br>Thanks and Regards,<br>${getSenderName()}`;
+          GmailApp.createDraft(emailID, emailSubject, "", { htmlBody: emailBody, cc: ccEmailID });
+        }
+      }
+    }
+  });
+}
+
+// Filter the POD data based on conditions
+function filterPODData(podData, branchName, pendingDays) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const menuSheet = ss.getSheetByName("Menu");
+
+  const filterRequired = menuSheet.getRange("B15").getValue(); // Value from B15
+  const filterOn = menuSheet.getRange("B16").getValue(); // Value from B16
+
+  return podData.filter((row, index) => {
+    if (index === 0) return true; // Keep header row
+
+    const matchesBranch = row[0] && row[0].trim() === branchName.trim(); // Column A: Branch
+    const exceedsPendingDays = Number(row[8]) > pendingDays; // Column I: Pending Days
+    const isCollectedDateEmpty = !row[14] || String(row[14]).trim() === ""; // Column O: Collected Date
+
+    // Apply additional filtering if "As Selected Below" is set in B15
+    let additionalFilter = true;
+    if (filterRequired === "As Selected Below" && filterOn) {
+      additionalFilter = row[11] === filterOn; // Example: Match Column L (index 11)
+    }
+
+    Logger.log(
+      `Row ${index}: Branch=${row[0]}, PendingDays=${row[8]}, CollectedDate=${row[14]}, FilterOn=${row[11]} => Match=${matchesBranch}, ExceedsDays=${exceedsPendingDays}, EmptyCollectedDate=${isCollectedDateEmpty}, AdditionalFilter=${additionalFilter}`
+    );
+
+    return matchesBranch && exceedsPendingDays && isCollectedDateEmpty && additionalFilter;
+  });
+}
+// Create an Excel file from the filtered data
+function createExcel(data, fileName) {
+  const tempSpreadsheet = SpreadsheetApp.create(fileName);
+  const tempSheet = tempSpreadsheet.getActiveSheet();
+  tempSheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+  SpreadsheetApp.flush();
+
+  const fileId = tempSpreadsheet.getId();
+  const url = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+  const params = {
+    method: "GET",
+    headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(url, params);
+  DriveApp.getFileById(fileId).setTrashed(true); // Delete temporary file
+  return response.getBlob().setName(`${fileName}.xlsx`);
+}
+
+// Create an HTML table for the email
+function createHtmlTable(data) {
+  let html = '<table border="1" style="border-collapse: collapse; width: 100%;">';
+  data.forEach((row, rowIndex) => {
+    html += "<tr>";
+    row.forEach((cell) => {
+      const cellData = cell || "";
+      if (rowIndex === 0) {
+        html += `<th style="background-color: green; color: yellow; padding: 5px;">${cellData}</th>`;
+      } else {
+        html += `<td style="padding: 5px;">${cellData}</td>`;
+      }
+    });
+    html += "</tr>";
+  });
+  html += "</table>";
+  return html;
+}
+
+// Format date as DD/MM/YYYY
+function formatDate(date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+// Get sender's name
+function getSenderName() {
+  const email = Session.getActiveUser().getEmail();
+  return email.split("@")[0].replace(".", " ").toUpperCase();
+}

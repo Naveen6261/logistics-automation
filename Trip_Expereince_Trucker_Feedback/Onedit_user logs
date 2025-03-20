@@ -1,0 +1,31 @@
+function onEdit(e) {
+  const range = e.range;
+  const sheet = range.getSheet();
+  const allowedSheets = ["Pooja Feedback", "Ragini Feedback"];
+  
+  // Check if the edit is in an allowed sheet
+  if (!allowedSheets.includes(sheet.getName())) return;
+
+  const row = range.getRow();
+  const column = range.getColumn();
+  const formattedTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm");
+  const userEmail = Session.getActiveUser().getEmail();
+  let emailUpdated = false; // Track if email was updated
+
+  // Determine where to write the timestamp based on the edited column
+  if (column >= 10 && column <= 12) { // Columns J, K, L
+    sheet.getRange(row, 52).setValue(formattedTime); // Column AZ for timestamp
+    emailUpdated = true;
+  } else if (column >= 13 && column <= 35) { // Columns M:AI
+    sheet.getRange(row, 53).setValue(formattedTime); // Column BA for timestamp
+    emailUpdated = true;
+  } else if (column >= 1 && column <= 9) { // Columns A:I
+    sheet.getRange(row, 54).setValue(formattedTime); // Column BB for timestamp
+    emailUpdated = true;
+  }
+
+  // Update the email only if the edit was in the specified columns
+  if (emailUpdated) {
+    sheet.getRange(row, 51).setValue(userEmail); // Column AY for email
+  }
+}

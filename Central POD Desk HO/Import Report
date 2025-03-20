@@ -1,0 +1,146 @@
+function syncPODData() {
+  var sourceSheetId = "189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4"; // Source spreadsheet ID
+  var sourceSheetName = "Tempdownloaded"; // Source sheet
+  var destinationSheetName = "POD Processed"; // Destination sheet
+  var webhookUrl = "https://chat.googleapis.com/v1/spaces/AAAAvyJ1noY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=aOwO9BjMzpeE_cIvUKBhlibmnVrYzHRvEXdAcLwQ1HE"; // Webhook URL
+
+  var ss = SpreadsheetApp.openById(sourceSheetId);
+  var sourceSheet = ss.getSheetByName(sourceSheetName);
+  var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(destinationSheetName);
+
+  if (!sourceSheet || !destSheet) {
+    Logger.log("Error: One or both sheets not found.");
+    return;
+  }
+
+  var sourceData = sourceSheet.getDataRange().getValues();
+  var headers = sourceData[6]; // Row 7 contains headers
+  var data = sourceData.slice(7); // Data starts from row 8
+
+  if (data.length === 0) {
+    Logger.log("No new data to process.");
+    return;
+  }
+
+  // **Step 1: Count Required Numbers Before Changing Columns**
+  var counts = {};
+  var uniquePODNumbers = new Set();
+  var submittedAtUnloadingCount = 0;
+  var nonCleanPODCount = 0;
+
+  data.forEach(row => {
+    var uploadedBy = row[9]; // Column J (Uploaded By)
+    var podDocket = row[8]; // Column I (POD Docket Number)
+    var submittedAtUnloading = row[5] === true; // Column F should be exactly TRUE
+    var nonCleanPOD = row[6] === false;        // Column G should be exactly FALSE
+
+    counts[uploadedBy] = counts[uploadedBy] || { total: 0, couriers: new Set(), submitted: 0, nonClean: 0 };
+    counts[uploadedBy].total++;
+    counts[uploadedBy].couriers.add(podDocket);
+    //uniquePODNumbers.add(podDocket);
+
+    if (submittedAtUnloading) {
+      counts[uploadedBy].submitted++; // "Submitted" counts TRUE in Column F
+      submittedAtUnloadingCount++;
+    }
+
+    if (nonCleanPOD) {
+      counts[uploadedBy].nonClean++; // "Non Clean POD" counts FALSE in Column G
+      nonCleanPODCount++;
+    }
+  });
+
+  // **Step 2: Rearrange Columns Based on Mapping**
+  var columnMapping = ["", 3, 9, 1, 8, "", 2, "", 4, "", 11, 12, 17, "", 6, 16, 10, 14, 18, "", 13, "", "", "", "", 5, "","", "", 19, 20, 18]; // Adjusted indexes
+  var processedData = data.map(row => columnMapping.map(index => index === 14 ? (row[index] ? "Yes" : "") : row[index])); // Convert Non Clean POD (column O) to "Yes"
+
+  // **Step 3: Append Data to "POD Processed"**
+  var lastRow = destSheet.getLastRow();
+  destSheet.getRange(lastRow + 1, 1, processedData.length, processedData[0].length).setValues(processedData);
+
+  // **Step 4: Send Notification**
+  var message = formatSummary(counts, uniquePODNumbers.size, submittedAtUnloadingCount, nonCleanPODCount);
+  sendWebhookNotification(webhookUrl, message);
+}
+
+function formatSummary(counts, uniquePODs, submittedPODs, nonCleanPODs) {
+  var summary = `📊 **POD Uploaded Summary ** 📊\n\n`;
+  //summary += `✅ **Total Dockets Processed:** ${uniquePODs}\n`;
+  summary += `📌 **Submitted at Unloading Point:** ${submittedPODs}\n`; 
+  summary += `❌ **Non Clean PODs:** ${nonCleanPODs}\n\n`;
+
+  // **Table Header**
+  var tableData = [];
+  var totalCounts = { total: 0, couriers: 0, submitted: 0, nonClean: 0 };
+
+  Object.keys(counts).forEach(name => {
+    var total = counts[name].total || 0;
+    var couriers = counts[name].submitted || 0; // Couriers column shows the submitted count
+    var submitted = counts[name].submitted || 0;
+    var nonClean = counts[name].nonClean || 0;
+
+    tableData.push([name, total, couriers, submitted, nonClean]);
+
+    totalCounts.total += total;
+    totalCounts.couriers += couriers;
+    totalCounts.submitted += submitted;
+    totalCounts.nonClean += nonClean;
+  });
+
+  tableData.push(["**Total**", totalCounts.total, totalCounts.couriers, totalCounts.submitted, totalCounts.nonClean]);
+
+  summary += "**🔹 Upload Counts  :**\n";
+  summary += "```\n";
+  summary += `| Name           | Total | Couriers | Submitted | Non Clean |\n`;
+  summary += `|---------------|-------|----------|-----------|-----------|\n`;
+
+  tableData.forEach(row => {
+    summary += `| ${row[0].padEnd(14)} | ${String(row[1]).padEnd(5)} | ${String(row[2]).padEnd(8)} | ${String(row[3]).padEnd(9)} | ${String(row[4]).padEnd(9)} |\n`;
+  });
+
+  summary += "```\n";
+
+  // **Random Motivational Message**
+  var messages = [
+    "🔥 **\"{topUser}\" is leading the way! Keep up the great work!** 💪",
+    "🚀 **Outstanding effort by \"{topUser}\"! Keep pushing forward!**",
+    "💡 **\"{topUser}\" is setting new standards! Who's next?**",
+    "🏆 **\"{topUser}\" is today's champion! Amazing work!**",
+    "⚡ **Power move by \"{topUser}\"! Keep it up!**",
+    "🌟 **Exceptional work by \"{topUser}\"! Keep shining!**",
+    "📈 **Great momentum, \"{topUser}\"! Let's keep growing!**",
+    "🎯 **Spot on, \"{topUser}\"! Let's achieve more!**",
+    "🏅 **\"{topUser}\" is on fire! Who will challenge them?**",
+    "💪 **Unstoppable performance by \"{topUser}\"!**",
+    "🔥 **\"{topUser}\" is setting records today! Keep going!**",
+    "⚔️ **Who can compete with \"{topUser}\" today? Step up!**",
+    "🚀 **Keep up the pace, \"{topUser}\"! We’re watching!**",
+    "🌠 **Superb contribution, \"{topUser}\"! Let's see more!**",
+    "🏋️ **\"{topUser}\" is lifting the team's performance!**",
+    "🎉 **Bravo \"{topUser}\"! Your dedication shines through!**",
+    "🥇 **\"{topUser}\" has outdone themselves today!**",
+    "🌈 **Amazing work by \"{topUser}\"! Let's celebrate success!**",
+    "🚩 **Heads up, \"{topUser}\" is on a roll!**",
+    "📣 **Kudos to \"{topUser}\" for an inspiring performance!**"
+  ];
+
+  var keys = Object.keys(counts);
+  var topUser = keys.length > 0 ? keys.reduce((a, b) => (counts[a].total > counts[b].total ? a : b)) : "";
+  // Rotate message daily based on the day of month
+  var messageIndex = new Date().getDate() % messages.length;
+  var randomMessage = messages[messageIndex].replace("{topUser}", topUser);
+  
+  summary += `\n${randomMessage}\n`;
+
+  return summary;
+}
+
+function sendWebhookNotification(url, message) {
+  var payload = JSON.stringify({ text: message });
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    payload: payload
+  };
+  UrlFetchApp.fetch(url, options);
+}

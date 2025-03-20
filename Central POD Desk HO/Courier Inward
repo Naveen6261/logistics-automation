@@ -1,0 +1,153 @@
+function mainCopydatatocentralisedinward() {
+  try {
+    if (isExcludedDay()) {
+      Logger.log("Script not executed on excluded day");
+      return;
+    }
+
+    const reportData = {
+      copied: [],
+      cleared: [],
+      copiedCount: 0,
+      clearedCount: 0
+    };
+
+    // Copy data process
+    const copyResult = copyDataToDestination();
+    if (copyResult && copyResult.copiedRows) {
+      reportData.copied = copyResult.copiedRows;
+      reportData.copiedCount = copyResult.copiedCount;
+    } else {
+      Logger.log("No data copied or an error occurred during copying.");
+    }
+
+    // Monthly data clearance check
+    const today = new Date();
+    if (today.getDate() === 1) { // Runs on 1st of every month
+      const clearResult = clearOldDataFromSource();
+      if (clearResult && clearResult.clearedRows) {
+        reportData.cleared = clearResult.clearedRows;
+        reportData.clearedCount = clearResult.clearedCount;
+      } else {
+        Logger.log("No data cleared or an error occurred during clearing.");
+      }
+    }
+
+    sendEmailReport(reportData);
+  } catch (e) {
+    Logger.log('Error: ' + e.toString());
+    MailApp.sendEmail({
+      to: 'naveenkumar.m@lobb.in',
+      subject: 'Script Error Report',
+      body: 'An error occurred: ' + e.toString()
+    });
+  }
+}
+
+function isExcludedDay() {
+  const today = new Date();
+  const istToday = Utilities.formatDate(today, 'IST', 'yyyy-MM-dd');
+  const dayOfWeek = Utilities.formatDate(today, 'IST', 'u');
+  
+  const excludedDates = [
+    '2023-12-25',
+    '2024-01-01'
+    // Add more dates in YYYY-MM-DD format
+  ];
+
+  return dayOfWeek === '7' || excludedDates.includes(istToday);
+}
+
+function copyDataToDestination() {
+  try {
+    const sourceSheet = SpreadsheetApp.openById('1740YprqLS_WD7ePdcPnbHfW4nGiL6pxry6ylWLXtJIE')
+      .getSheetByName('Inward Courier New');
+    const destSheet = SpreadsheetApp.openById('189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4')
+      .getSheetByName('Courier Inward');
+
+    if (!sourceSheet || !destSheet) {
+      throw new Error("Source or destination sheet not found.");
+    }
+
+    const sourceData = sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, 4).getValues();
+    const destKeys = destSheet.getRange(2, 3, destSheet.getLastRow() - 1 || 0, 1).getValues().flat();
+
+    const newRows = sourceData.filter(row => !destKeys.includes(row[2]));
+    
+    if (newRows.length) {
+      destSheet.getRange(destSheet.getLastRow() + 1, 1, newRows.length, 4).setValues(newRows);
+    }
+
+    return { copiedRows: newRows, copiedCount: newRows.length };
+  } catch (e) {
+    Logger.log('Error in copyDataToDestination: ' + e.toString());
+    return null;
+  }
+}
+
+function clearOldDataFromSource() {
+  try {
+    const sourceSheet = SpreadsheetApp.openById('1740YprqLS_WD7ePdcPnbHfW4nGiL6pxry6ylWLXtJIE')
+      .getSheetByName('Inward Courier New');
+
+    if (!sourceSheet) {
+      throw new Error("Source sheet not found.");
+    }
+
+    const data = sourceSheet.getDataRange().getValues();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 15);
+
+    const rowsToDelete = [];
+    for (let i = data.length - 1; i >= 1; i--) {
+      const rowDate = new Date(data[i][3]);
+      if (rowDate < cutoffDate) {
+        rowsToDelete.push(i + 1);
+      }
+    }
+
+    rowsToDelete.forEach(row => sourceSheet.deleteRow(row));
+
+    return { 
+      clearedRows: data.slice(1).filter((_, idx) => rowsToDelete.includes(idx + 2)),
+      clearedCount: rowsToDelete.length 
+    };
+  } catch (e) {
+    Logger.log('Error in clearOldDataFromSource: ' + e.toString());
+    return null;
+  }
+}
+
+function sendEmailReport(reportData) {
+  const dateString = Utilities.formatDate(new Date(), 'IST', 'dd-MMM-yyyy HH:mm');
+  const csvContent = generateCsvContent(reportData);
+
+  const subject = `${dateString} - ( ${reportData.copiedCount} ): Courier Inward Data temp file to central desk file Transfer Report`;
+  const body = `Summary:
+- ${reportData.copiedCount} Courier Inward
+- ${reportData.clearedCount} Courier Inward temp file cleared
+
+See attached CSV for details`;
+
+  MailApp.sendEmail({
+    to: 'naveenkumar.m@lobb.in',
+    cc: 'naveenkumar.m@lobb.in',
+    subject: subject,
+    body: body,
+    attachments: [Utilities.newBlob(csvContent, 'text/csv', 'report.csv')]
+  });
+}
+
+function generateCsvContent(reportData) {
+  let csv = 'Action,Date Processed,Key Value,Other Details\n';
+  
+  reportData.copied.forEach(row => {
+    csv += `Copied,${row[3]},${row[2]},"${row[0]}, ${row[1]}"\n`;
+  });
+  
+  reportData.cleared.forEach(row => {
+    csv += `Cleared,${row[3]},${row[2]},"${row[0]}, ${row[1]}"\n`;
+  });
+  
+  return csv;
+}

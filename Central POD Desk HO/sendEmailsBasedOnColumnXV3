@@ -1,0 +1,85 @@
+//latest updated to send email to brnach by selecting as No on the popup message- runs and drafts only with attachments- if selected yes drafts email for all the trips marked 1 based on column X - after the script ends the status of drafting is captured in the column Y 
+function sendEmailsWithPrompt1() {
+  try {
+    var spreadsheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+    var sheetName = 'POD Processed';
+    var folderId = '1tXeYc6VbuIwKTjWPOEAa_wKUp1h3Fz_8';
+
+    // Popup to ask user if drafting without attachments is allowed
+    var response = Browser.msgBox(
+      "Allow Drafting Without Attachments",
+      "Do you want to draft emails even if attachments are not found?",
+      Browser.Buttons.YES_NO
+    );
+
+    var allowDraftWithoutAttachment = response === 'FALSE'; // 'yes' means the user clicked Yes
+
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(sheetName);
+    var dataRange = sheet.getDataRange().getValues();
+
+    for (var i = 1; i < dataRange.length; i++) {
+      var valueU = dataRange[i][23]; // Column X
+      var valueV = dataRange[i][24]; // Column Y
+
+      if (valueU === 1 && valueV === '') { // X = 1 and Y is blank
+        var txnNo = dataRange[i][3].toString(); // Column D
+        var branchName = dataRange[i][6]; // Column G
+        var subjectLine = dataRange[i][15]; // Column P
+        var podReceivedDate = formatDate(new Date(dataRange[i][1])); // Column B
+
+        var subject = `Urgent: ${branchName} ${txnNo} Shortage/Damage Mentioned :  ${subjectLine}`;
+        var body = `<p>Dear Branch Team,</p>
+<p>Please be informed remarks mentioned in the <strong>POD</strong>:</p>
+<p><strong>${subjectLine}</strong></p>
+<p>Trip ID: ${txnNo}<br>
+POD received date: ${podReceivedDate}</p>
+<p>"This matter requires immediate attention. Please take up the issue with the transporter to understand the root cause and discuss the financial implications, including any costs payable or receivable as soon as possible. It is crucial that this matter is resolved promptly to avoid any further discrepancies.</p>
+<p><span style="background-color: yellow;">Please update the LOBB Office by entering the estimated value of deductions for truckers.</span></p>
+<p>Thank you for your prompt action on this matter.</p>
+<p>Thanks and Regards,<br>Centralized POD<br>Lobb HO</p>`;
+
+        // Find attachment
+        var folder = DriveApp.getFolderById(folderId);
+        var files = folder.getFiles();
+        var attachment = null;
+
+        while (files.hasNext()) {
+          var file = files.next();
+          if (file.getName().includes(txnNo)) {
+            attachment = file;
+            break;
+          }
+        }
+
+        // Check attachment and draft email
+        if (attachment || allowDraftWithoutAttachment) {
+          try {
+            var options = {
+              cc: ['POD@lobb.in,ranjan.jena@lobb.in,samreen.tamboli@lobb.in,accounts@lobb.in'].join(','),
+              htmlBody: body,
+            };
+            if (attachment) options.attachments = [attachment];
+
+            GmailApp.createDraft('', subject, '', options);
+
+            var logMessage = attachment
+              ? `Email drafted successfully with attachment - ${new Date()}`
+              : `Email drafted successfully without attachment - ${new Date()}`;
+            sheet.getRange(i + 1, 25).setValue(logMessage); // Update Column Y
+          } catch (emailError) {
+            sheet.getRange(i + 1, 25).setValue('Email drafting failed: ' + emailError.message + ' ' + new Date());
+          }
+        } else {
+          sheet.getRange(i + 1, 25).setValue('Attachment not found, email not drafted ' + new Date());
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('Error occurred: ' + e.toString());
+  }
+}
+
+function formatDate(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'dd-MM-yyyy');
+}

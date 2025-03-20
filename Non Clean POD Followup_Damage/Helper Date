@@ -1,0 +1,7 @@
+function formatDateForEmail(date) {
+  if (date instanceof Date) {
+    const options = { year: 'numeric', month: 'short', day: '2-digit' };
+    return date.toLocaleDateString('en-US', options).replace(",", "");
+  }
+  return date; // If not a date, return the original value
+}

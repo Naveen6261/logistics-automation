@@ -1,0 +1,37 @@
+//Data to combine from the feedback team to view for reports
+function mergeFeedbackData() {
+  const spreadsheetId = "1ubdtF3AlIMcPs12RQJmrHBEGfSoIlz51VZJwr75GbDs";
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+
+  // Define the sheets and the starting row for data
+  const sheets = ["Pooja Feedback", "Ragini Feedback"];
+  const startRow = 8; // data to retrive from which from which row the feedback sheets mentioned above 
+
+  // Define the target sheet
+  const targetSheetName = "Data";
+  let targetSheet = spreadsheet.getSheetByName(targetSheetName);
+
+  // If the target sheet doesn't exist, create it
+  if (!targetSheet) {
+    targetSheet = spreadsheet.insertSheet(targetSheetName);
+  }
+
+  let targetRow = 10; // Start adding data from row 10 in the "Data" sheet
+
+  sheets.forEach(sheetName => {
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (sheet) {
+      const lastRow = sheet.getLastRow();
+      const lastColumn = sheet.getLastColumn();
+
+      // Fetch the data from the specified starting row
+      if (lastRow >= startRow) {
+        const data = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastColumn).getValues();
+        targetSheet.getRange(targetRow, 1, data.length, data[0].length).setValues(data);
+        targetRow += data.length; // Update the target row for the next sheet's data
+      }
+    }
+  });
+
+  SpreadsheetApp.flush();
+}

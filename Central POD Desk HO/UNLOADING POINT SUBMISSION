@@ -1,0 +1,123 @@
+function getEmailsToSoftcopySheet() {
+  var sheetName = 'softcopy';
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var podSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('POD Processed');
+
+  if (!sheet || !podSheet) {
+    SpreadsheetApp.getUi().alert('Sheet not found.');
+    return;
+  }
+
+  sheet.clear(); // Clear sheet before adding new data
+
+  // Set headers
+  var headers = ["From", "To", "Subject", "Date", "Body", "5/6-Digit TXN"];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  var query = '("Submitted at unloading point")';
+  var threads = GmailApp.search(query, 0, 50); 
+  var row = 2;
+  var batchSize = 10;
+
+  var ignoreSubjects = [
+    /^POD Uploaded Summary Today/i,
+    /^PODs processed - POD with Remarks/i,
+    /^Tracking Summary \d{4}-\d{2}-\d{2}$/i
+  ];
+
+  var ignoreBodyText = /Dear All,\s*Please find the attached POD details dispatched/i;
+  var extractedTXNs = new Set();
+  var data = [];
+
+  for (var i = 0; i < threads.length; i += batchSize) {
+    var threadBatch = threads.slice(i, i + batchSize);
+    
+    for (var j = 0; j < threadBatch.length; j++) {
+      var messages = threadBatch[j].getMessages();
+      
+      for (var k = 0; k < messages.length; k++) {
+        var message = messages[k];
+        var from = message.getFrom();
+        var to = message.getTo();
+        var subject = message.getSubject();
+        var date = message.getDate();
+        var body = message.getPlainBody();
+
+        if (ignoreSubjects.some(pattern => pattern.test(subject))) continue;
+        if (ignoreBodyText.test(body)) continue;
+
+        if (/Submitted at unloading point/i.test(subject) || /Submitted at unloading point/i.test(body)) {
+          
+          var numberMatch = subject.match(/\b\d{5,6}\b/) || body.match(/\b\d{5,6}\b/);
+          var txnNumber = numberMatch ? numberMatch[0] : 'N/A';
+
+          // Ignore TXN number 560001 and ensure uniqueness
+          if (txnNumber !== 'N/A' && txnNumber !== '560001' && !extractedTXNs.has(txnNumber)) {
+            extractedTXNs.add(txnNumber);
+            data.push([from, to, subject, date, body, txnNumber]);
+          }
+        }
+      }
+    }
+  }
+
+  if (data.length > 0) {
+    sheet.getRange(row, 1, data.length, data[0].length).setValues(data);
+  }
+
+  // Perform VLOOKUP to check if TXN numbers exist in both "POD Processed" sheets
+  var missingTXNs = checkMissingTXNs(extractedTXNs);
+
+  if (missingTXNs.length > 0) {
+    sendToGoogleChat(missingTXNs);
+  }
+
+ // SpreadsheetApp.getUi().alert('Email extraction completed successfully.');
+}
+
+// Function to check TXNs in both "POD Processed" sheets
+function checkMissingTXNs(extractedTXNs) {
+  var podSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('POD Processed');
+  var localPodData = new Set(podSheet.getRange("D:D").getValues().flat().filter(txn => txn)); 
+
+  var externalPodData = getExternalPodData(); // Fetch external "POD Processed" data
+
+  var missingTXNs = Array.from(extractedTXNs).filter(txn => 
+    !localPodData.has(txn) && !externalPodData.has(txn)
+  );
+
+  return missingTXNs;
+}
+
+// Function to fetch TXNs from external Google Sheet's "POD Processed" column D
+function getExternalPodData() {
+  var externalSheetId = "1rQxq9ug4k7YNxsX5He0rsQGlg5gLhx_wyejB1FPcj_8";
+  var externalSpreadsheet = SpreadsheetApp.openById(externalSheetId);
+  var externalSheet = externalSpreadsheet.getSheetByName("POD Processed");
+
+  if (!externalSheet) {
+    Logger.log("External sheet 'POD Processed' not found.");
+    return new Set();
+  }
+
+  var externalData = new Set(externalSheet.getRange("D:D").getValues().flat().filter(txn => txn));
+  return externalData;
+}
+
+// Function to send missing TXNs to Google Chat Space
+function sendToGoogleChat(missingTXNs) {
+  var uniqueTXNs = [...new Set(missingTXNs)];
+  var totalCount = uniqueTXNs.length;
+  var message = `🚨 *Missing TXNs in POD Processed:*\n${uniqueTXNs.join("\n")}\n\n🔹 *Total Count:* ${totalCount}\n📌 *Central POD Team: Check if the POD is uploaded / email is actioned*`;
+
+  var url = "https://chat.googleapis.com/v1/spaces/AAAA_0GXtNU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=-dGbE2yexBaKyo27b9vAbzjGJlnYLrUqD7l7eTFKOcs"; // Replace with your Google Chat Webhook URL
+  var payload = { "text": message };
+
+  var options = {
+    "method": "post",
+    "contentType": "application/json",
+    "payload": JSON.stringify(payload)
+  };
+
+  UrlFetchApp.fetch(url, options);
+}

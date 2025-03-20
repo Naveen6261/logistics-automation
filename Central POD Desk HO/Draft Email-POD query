@@ -1,0 +1,81 @@
+    function draftEmailFromSerialNumber() {
+  try {
+    var spreadsheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+    var sheetName = 'POD Processed';
+    var settingsSheetName = 'Settings';
+    var folderId = '1tXeYc6VbuIwKTjWPOEAa_wKUp1h3Fz_8';
+
+    var ss = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = ss.getSheetByName(sheetName);
+    var settingsSheet = ss.getSheetByName(settingsSheetName);
+
+    var ui = SpreadsheetApp.getUi();
+    var response = ui.prompt('Enter Serial Number', 'Please enter the TXN number:', ui.ButtonSet.OK_CANCEL);
+
+    if (response.getSelectedButton() == ui.Button.OK) {
+      var serialNumber = response.getResponseText().trim();
+      var dataRange = sheet.getDataRange().getValues();
+      var activeRow = dataRange.findIndex(row => row[3] == serialNumber);
+
+      if (activeRow == -1) {
+        ui.alert('Serial number not found.');
+        return;
+      }
+      activeRow += 1; // Adjust for 1-based index
+
+      var data = sheet.getRange(activeRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var settingsData = settingsSheet.getDataRange().getValues();
+      var settingsEmailMap = settingsData.reduce((map, row) => {
+        map[row[8]] = row[9]; // Name and Email
+        return map;
+      }, {});
+      var settingsBranchEmailMap = settingsData.reduce((map, row) => {
+        map[row[0]] = row[7]; // Branch Name and Email
+        return map;
+      }, {});
+
+      var txnNo = data[3]; // TXN Number
+      var branchName = data[6]; // Branch Name
+      var subjectLine = data[12]; // Subject Line
+      var nameA = data[26]; // Name A
+      var nameB = data[34]; // Name B
+
+      var toEmails = ['pod@lobb.in'];
+      if (settingsEmailMap[nameA]) toEmails.push(settingsEmailMap[nameA]);
+      if (settingsEmailMap[nameB]) toEmails.push(settingsEmailMap[nameB]);
+
+      var ccEmails = [];
+      if (settingsBranchEmailMap[branchName]) ccEmails.push(settingsBranchEmailMap[branchName]);
+
+      var subject = `POD QUERY // ${txnNo} ${branchName} ${subjectLine}`;
+      var body = `Dear Branch Team,
+
+Scan copy is attached and NOT uploaded in the Lobb office.
+The same is dispatched to the branch.
+
+Please confirm if the attached POD is accepted by the transporter. On receiving your confirmation POD will be uploaded.
+
+Thanks and Regards,
+Centralized POD
+Lobb HO`;
+
+      var folder = DriveApp.getFolderById(folderId);
+      var attachment = folder.getFilesByName(txnNo).next();
+
+      if (attachment) {
+        GmailApp.createDraft(toEmails.join(','), subject, body, {
+          cc: ccEmails.join(','),
+          attachments: [attachment]
+        });
+        ui.alert('Email Draft successful.');
+      } else {
+        ui.alert('Attachment not found for TXN No: ' + txnNo);
+      }
+    } else {
+      Logger.log('Prompt cancelled.');
+    }
+  } catch (e) {
+    Logger.log('Error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
+  }
+}

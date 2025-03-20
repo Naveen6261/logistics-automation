@@ -1,0 +1,93 @@
+//not in use from 19March 2025 as the string date is not working as expected chenged the function to v1 
+function moveRowsWithDateToArchivev1() {
+  try {
+    var sourceSheetId = "1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg"; 
+    var destinationSheetId = "1sp1xIDwxUA8vVZ3-Fx7beR59I2pidTZbFpZnUN8yvoM";
+    var destinationSheetName = "Archive";
+    var summarySheetName = "Retrieval Summary";
+    var settingsSheetName = "Settings";
+
+    var settingsSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(settingsSheetName);
+    var destinationSheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(destinationSheetName);
+    var summarySheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(summarySheetName);
+
+    // Get sheet names from Settings sheet
+    var lastRowSettings = settingsSheet.getLastRow();
+    var sheetNamesRange = settingsSheet.getRange("A2:A" + lastRowSettings);
+    var sheetNames = sheetNamesRange.getValues().flat().filter(String);
+
+    var timestamp = new Date();
+    var timestampString = Utilities.formatDate(timestamp, Session.getScriptTimeZone(), "dd/MMM/yyyy hh:mm a");
+
+    // Initialize variables for total count and email body
+    var totalRowsMoved = 0;
+    var emailBody = "Notification!\n\n";
+
+    // Process each sheet
+    for (var j = 0; j < sheetNames.length; j++) {
+      var sourceSheetName = sheetNames[j];
+      var sourceSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(sourceSheetName);
+
+      if (sourceSheet) {
+        var startRow = 4; // Start processing from row 4
+        var lastRow = sourceSheet.getLastRow();
+        if (lastRow < startRow) continue; // Skip sheets with less than 4 rows of data
+
+        // Sort data by column P in ascending order
+        var rangeToSort = sourceSheet.getRange(startRow, 1, lastRow - startRow + 1, sourceSheet.getLastColumn());
+        rangeToSort.sort({column: 16, ascending: true}); // 16 is column P POD received date
+
+        var data = rangeToSort.getValues();
+
+        // Move rows with date value to destination sheet and mark for deletion
+        var rowsToDelete = [];
+        for (var i = 0; i < data.length; i++) {
+          var dateValue = data[i][15]; // Column P is the 16th column (index 15)
+
+          if (dateValue instanceof Date) {
+            // Add the timestamp to the end of the row data
+            data[i].push(timestampString);
+            // Insert the row at the top of the destination sheet
+            destinationSheet.appendRow(data[i]);
+            rowsToDelete.push(startRow + i); // Adjust index to match the row number in the sheet
+            totalRowsMoved++;
+          }
+        }
+
+        // Delete rows from source sheet
+        if (rowsToDelete.length > 0) {
+          for (var k = rowsToDelete.length - 1; k >= 0; k--) {
+            sourceSheet.deleteRow(rowsToDelete[k]);
+          }
+        }
+
+        // Log the count moved in summary sheet with timestamp
+        summarySheet.insertRowBefore(1);
+        summarySheet.getRange("A1").setValue("Total TXN's moved: " + rowsToDelete.length + " from " + sourceSheetName + " " + timestampString);
+
+        // Construct email body
+        emailBody += sourceSheetName + ": " + rowsToDelete.length + " rows\n";
+      }
+    }
+
+    // Send email notification
+    if (totalRowsMoved > 0) {
+      emailBody += "\nTotal rows moved: " + totalRowsMoved + "\n\nhttps://docs.google.com/spreadsheets/d/1sp1xIDwxUA8vVZ3-Fx7beR59I2pidTZbFpZnUN8yvoM/edit  \n\nThanks and regards,\nLobb";
+
+      MailApp.sendEmail({
+        to: "Naveenkumar.m@lobb.in",
+        cc: "naveenkumar.m@lobb.in",
+
+       // to: "Naveenkumar.m@lobb.in,samreen.tamboli@lobb.in,harish.gupta@lobb.in,soni.gupta@lobb.in,reema.srivastava@lobb.in,vasundhara.gaur@lobb.in",
+       // cc: "mylari.gupta@lobb.in",
+        subject: totalRowsMoved+"-TXN's - POD Followup Completed - " + timestampString,
+        body: emailBody
+      });
+    } else {
+      Logger.log("No data moved.");
+    }
+
+  } catch (error) {
+    Logger.log("Error: " + error.message);
+  }
+}

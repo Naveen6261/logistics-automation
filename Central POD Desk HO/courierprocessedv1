@@ -1,0 +1,142 @@
+function sendStyledCourierProcessedEmail() {
+  var ss = SpreadsheetApp.openById("189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4");
+  var sheet = ss.getSheetByName("Courier Inward");
+  var today = new Date();
+
+  // Check if today is Sunday
+  if (today.getDay() === 0) { // 0 represents Sunday
+    Logger.log("Today is Sunday. Email will not be sent.");
+    return;
+  }
+
+  // List of holidays
+  var holidays = [
+    "1/14/2025", "3/31/2025", "5/1/2025", "8/15/2025", "8/27/2025", 
+    "10/1/2025", "10/2/2025", "10/20/2025", "11/1/2025"
+  ];
+
+  // Format today's date
+  var todayFormatted = Utilities.formatDate(today, "GMT+0530", "M/d/yyyy");
+  if (holidays.includes(todayFormatted)) {
+    Logger.log("Today is a holiday. Email will not be sent.");
+    return;
+  }
+
+  var yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  var yesterdayFormatted = Utilities.formatDate(yesterday, "GMT+0530", "M/d/yyyy");
+
+  var data = sheet.getRange("A1:G" + sheet.getLastRow()).getValues();
+  
+  var totalPendingCount = 0;
+  var todayPODCount = 0;
+  var yesterdayPODCount = 0;
+  var todayPendingCount = 0;
+  var yesterdayPendingCount = 0;
+
+  var groupedData = {};
+  var headers = data[0]; // Column headers
+
+  // Loop through data to group by date and calculate counts
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var date = row[0]; // Column A
+    var colC = row[2]; // Column C
+    var colD = row[3]; // Column D
+    var colG = row[6]; // Column G (1 indicates pending)
+
+    var dateFormatted = Utilities.formatDate(new Date(date), "GMT+0530", "M/d/yyyy");
+
+    if (!groupedData[dateFormatted]) {
+      groupedData[dateFormatted] = [];
+    }
+
+    if (colG === 1) {
+      totalPendingCount++;
+      groupedData[dateFormatted].push([colC, colD]);
+
+      // Count pending for today and yesterday
+      if (dateFormatted === todayFormatted) todayPendingCount++;
+      if (dateFormatted === yesterdayFormatted) yesterdayPendingCount++;
+    }
+
+    // Count received PODs for today and yesterday
+    if (dateFormatted === todayFormatted) todayPODCount++;
+    if (dateFormatted === yesterdayFormatted) yesterdayPODCount++;
+  }
+
+  // Determine subject line based on pending count
+  var subject = "Courier Processed Report";
+  if (totalPendingCount === 0) {
+    subject += " - Cleanest Desk";
+  } else if (totalPendingCount >= 1 && totalPendingCount <= 3) {
+    subject += ` - Clean Desk (${totalPendingCount})`;
+  } else {
+    subject += ` - Pending Couriers (${totalPendingCount})`;
+  }
+
+  // Build email body with improved styling
+  var emailBody = `<p><strong style="font-size: 16px; color: #4CAF50;">Courier Processed Report</strong></p>`;
+  
+  // Summary table
+  emailBody += `<table border="1" cellpadding="5" style="border-collapse: collapse; width: 50%; margin-bottom: 20px;">
+                  <thead>
+                    <tr style="background-color: #2196F3; color: #ffffff; font-weight: bold;">
+                      <th style="text-align: left; padding: 8px;">Metric</th>
+                      <th style="text-align: right; padding: 8px;">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Total Couriers Pending</td><td style="text-align: right;">${totalPendingCount}</td></tr>
+                    <tr><td>Received PODs Today</td><td style="text-align: right;">${todayPODCount}</td></tr>
+                    <tr><td>Received PODs Yesterday</td><td style="text-align: right;">${yesterdayPODCount}</td></tr>
+                    <tr><td>Pending Couriers Today</td><td style="text-align: right;">${todayPendingCount}</td></tr>
+                    <tr><td>Pending Couriers Yesterday</td><td style="text-align: right;">${yesterdayPendingCount}</td></tr>
+                  </tbody>
+                </table>`;
+
+  // Details table
+  if (Object.keys(groupedData).length > 0) {
+    emailBody += `<p><strong style="font-size: 14px; color: #4CAF50;">Details:</strong></p>`;
+    emailBody += `<table border="1" cellpadding="5" style="border-collapse: collapse; margin: auto; width: auto;">
+                    <thead>
+                      <tr style="background-color: #FF9800; color: #ffffff; font-weight: bold;">
+                        <th style="text-align: left; padding: 8px;">Date</th>
+                        <th style="text-align: left; padding: 8px;">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>`;
+
+    // Loop through grouped data to build table
+    for (var date in groupedData) {
+      if (groupedData[date].length > 0) {
+        emailBody += `<tr>
+                        <td style="text-align: left; font-weight: bold; padding: 8px;">${date}</td>
+                        <td style="text-align: left; padding: 8px;">`;
+        groupedData[date].forEach(function(row) {
+          emailBody += `${row[0]}, ${row[1]}<br>`;
+        });
+        emailBody += `</td></tr>`;
+      }
+    }
+
+    emailBody += `</tbody></table>`;
+  } else {
+    emailBody += `<p>No pending couriers found.</p>`;
+  }
+
+  // Add closing
+  emailBody += `<p style="margin-top: 20px;">Thanks and Regards,<br>
+                  <strong>POD Team</strong><br>
+                  <em>Auto-generated message from Google Sheets.</em></p>`;
+
+  // Send email
+  MailApp.sendEmail({
+    to: "naveenkumar.m@lobb.in",
+    cc: "naveenkumar.m@lobb.in",
+    subject: subject,
+    htmlBody: emailBody
+  });
+
+  Logger.log("Email sent successfully.");
+}

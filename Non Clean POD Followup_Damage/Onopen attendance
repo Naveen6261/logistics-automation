@@ -1,0 +1,17 @@
+function onOpen(e) {
+  const sheetName = "login"; // Name of the sheet to record attendance
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let loginSheet = ss.getSheetByName(sheetName);
+
+  // Create the login sheet if it doesn't exist
+  if (!loginSheet) {
+    loginSheet = ss.insertSheet(sheetName);
+    loginSheet.appendRow(["Name", "Login Time When Opened"]); // Add headers
+  }
+
+  const user = Session.getActiveUser().getEmail(); // Get the email of the current user
+  const now = new Date();
+
+  // Add a new record to the login sheet
+  loginSheet.appendRow([user, now]);
+}

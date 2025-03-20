@@ -1,0 +1,120 @@
+function distributePODData(x) {
+  var ss = SpreadsheetApp.openById("1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg");
+  var settingsSheet = ss.getSheetByName("Settings");
+  var podMasterDataSheet = ss.getSheetByName("POD Master Data");
+
+  // Read settings data
+  var settingsData = settingsSheet.getRange("A2:A10").getValues();
+  var sheetNames = settingsData.map(row => row[0]);
+
+  // Sort the data in POD Master Data sheet by column AA, then column H, then column C starting from row 4
+  podMasterDataSheet.getRange(4, 1, podMasterDataSheet.getLastRow() - 3, podMasterDataSheet.getLastColumn()).sort([{column: 27}, {column: 8}, {column: 3}]);
+
+  // Read POD Master Data starting from row 4
+  var podMasterDataRange = podMasterDataSheet.getRange("A4:AA" + podMasterDataSheet.getLastRow());
+  var podMasterData = podMasterDataRange.getValues();
+  var currentDateTime = new Date();
+  var formattedCurrentDate = Utilities.formatDate(currentDateTime, Session.getScriptTimeZone(), "dd/MMM/yyyy hh:mma");
+
+  var sheetData = {};
+  var rowsToDelete = [];
+  var missingSheets = [];
+
+  // Collect data for each destination sheet
+  for (var i = 0; i < podMasterData.length; i++) {
+    var row = podMasterData[i];
+    var sheetName = row[26]; // Column AA contains the sheet name
+
+    if (sheetNames.includes(sheetName)) {
+      var destinationSheet = ss.getSheetByName(sheetName);
+      if (!destinationSheet) {
+        if (!missingSheets.includes(sheetName)) {
+          missingSheets.push(sheetName); // Log missing sheet name
+        }
+        continue; // Skip this row since the sheet doesn't exist
+      }
+
+      if (!sheetData[sheetName]) {
+        sheetData[sheetName] = [];
+      }
+      row[1] = formattedCurrentDate; // Add current date to column B
+      sheetData[sheetName].push(row);
+      rowsToDelete.push(i + 4); // Note the row index for deletion (adjusting for 1-based indexing)
+    }
+  }
+
+  var emailBody = "Notification!\nNew data appended to POD followup\n\n";
+  var totalAddedCount = 0;
+
+  // Distribute data to respective sheets
+  for (var sheetName in sheetData) {
+    var data = sheetData[sheetName];
+    var destinationSheet = ss.getSheetByName(sheetName);
+    if (!destinationSheet) continue;
+
+    var lastRow = destinationSheet.getLastRow();
+    if (lastRow < 3) lastRow = 3;
+
+    var destinationRange = destinationSheet.getRange(lastRow + 1, 1, data.length, data[0].length);
+    destinationRange.setValues(data);
+
+    // Sort the destination sheet by column H, then column C starting from row 4
+    destinationSheet.getRange(4, 1, destinationSheet.getLastRow() - 3, destinationSheet.getLastColumn()).sort([{column: 8}, {column: 3}]);
+
+    emailBody += sheetName + ": " + data.length + "\n";
+    totalAddedCount += data.length;
+  }
+
+  emailBody += "\nTotal TXN's appended: " + totalAddedCount;
+
+  // Get counts from Settings sheet
+  var pendingDistributionCount = podMasterDataSheet.getRange("AB2").getValue();
+
+  // Add counts to email body
+  emailBody += "\nPending distribution: " + pendingDistributionCount;
+
+  // Log missing sheets if any
+  if (missingSheets.length > 0) {
+    emailBody += "\n\nMissing sheets (data not moved):\n" + missingSheets.join("\n");
+  }
+
+  emailBody += "\n\n\nThanks and Regards\nLobb";
+
+  // Send email notification
+  var subject = totalAddedCount + " - Followup TXN's distributed " + Utilities.formatDate(currentDateTime, Session.getScriptTimeZone(), "dd/MMM/yyyy hh:mma");
+
+  MailApp.sendEmail({
+    to: "Naveenkumar.m@lobb.in,samreen.tamboli@lobb.in,harish.gupta@lobb.in,soni.gupta@lobb.in,reema.srivastava@lobb.in,vasundhara.gaur@lobb.in,richa.singh@lobb.in",
+    cc: "mylari.gupta@lobb.in",
+    subject: subject,
+    body: emailBody
+  });
+
+  // Efficiently delete only the rows that were copied
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.sort(function(a, b) { return a - b; }); // Sort in ascending order
+
+    for (var j = rowsToDelete.length - 1; j >= 0; j--) {
+      var rowToDelete = rowsToDelete[j];
+      podMasterDataSheet.deleteRow(rowToDelete);
+    }
+  }
+
+  // Format columns B, D, and I in the destination sheets from row 4
+  for (var sheetName in sheetData) {
+    var destinationSheet = ss.getSheetByName(sheetName);
+    if (!destinationSheet) continue;
+
+    var lastRow = destinationSheet.getLastRow();
+
+    // Format columns B, D, and I from row 4
+    destinationSheet.getRange("B4:B" + lastRow).setNumberFormat("dd/MMM/YY");
+    destinationSheet.getRange("D4:D" + lastRow).setNumberFormat("dd/MMM/YY");
+    destinationSheet.getRange("I4:I" + lastRow).setNumberFormat("dd/MMM/YY");
+
+    // Add serial numbers in column A from row 4
+    for (var rowIndex = 4; rowIndex <= lastRow; rowIndex++) {
+      destinationSheet.getRange("A" + rowIndex).setValue(rowIndex - 3); // Serial number starting from 1
+    }
+  }
+}

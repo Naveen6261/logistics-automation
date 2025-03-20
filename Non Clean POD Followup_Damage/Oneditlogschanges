@@ -1,0 +1,44 @@
+function onEdit(e) {
+  if (!e) {
+    Logger.log("The script was run manually; no event object available.");
+    return;
+  }
+
+  const sheet = e.source.getActiveSheet();
+  const range = e.range;
+  const sheetName = "FOLLOWUP_DAMAGE";
+
+  // Ensure the changes are for the correct sheet
+  if (sheet.getName() !== sheetName) return;
+
+  const dateTimeColumn = 9; // Column I (9th column)
+  const logColumns = [18, 19, 20]; // Columns R (18) and S (19) T (20)
+  const editedRow = range.getRow();
+  const editedColumn = range.getColumn();
+
+  // Track changes only for columns B to K (2 to 11), Q (17), and R (18)
+  if ((editedColumn < 2 || editedColumn > 11) && !logColumns.includes(editedColumn)) return;
+
+  // Avoid overwriting the log column (I)
+  if (editedColumn === dateTimeColumn) return;
+
+  // Get the edited cell details
+  const cellAddress = range.getA1Notation(); // e.g., A2
+  const oldValue = e.oldValue || "Empty"; // Previous value (if available)
+  const newValue = e.value || "Empty"; // New value
+
+  // Format the timestamp
+  const timestamp = new Date();
+  const formattedTimestamp = Utilities.formatDate(timestamp, Session.getScriptTimeZone(), "EEE MMM dd yyyy HH:mm");
+
+  // Prepare the log message
+  const logMessage = `Cell ${cellAddress} changed from "${oldValue}" to "${newValue}" on ${formattedTimestamp}`;
+
+  // Get the existing log in column I
+  const logCell = sheet.getRange(editedRow, dateTimeColumn);
+  const existingLog = logCell.getValue();
+
+  // Append the new log
+  const updatedLog = existingLog ? `${existingLog}\n${logMessage}` : logMessage;
+  logCell.setValue(updatedLog);
+}

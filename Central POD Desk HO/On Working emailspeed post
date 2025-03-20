@@ -1,0 +1,59 @@
+function sendEmailWithCSVAttachment() {
+  // Get the current time
+  var currentTime = new Date();
+  
+  // Check if the current time is before 4:30 PM
+  if (currentTime.getHours() < 16 || (currentTime.getHours() === 16 && currentTime.getMinutes() < 30)) {
+    var confirmation = Browser.msgBox("Confirmation", "Are you sure you want to send the email?", Browser.Buttons.YES_NO);
+    if (confirmation !== "yes") {
+      return;
+    }
+  }
+  
+  // Get today's date
+  var today = new Date();
+  var formattedDate = Utilities.formatDate(today, Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+  // Get the spreadsheet
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName("Speed post");
+
+  // Get the data range
+  var range = sheet.getRange("A:V");
+  var numRows = range.getNumRows();
+  var values = range.getValues();
+
+  // Prepare CSV data with serial numbers
+  var csv = '"Serial Number","' + values[0].join('","') + '"\n'; // Header row
+  var counter = 1;
+  for (var i = 2; i < numRows; i++) {
+    var row = [];
+    row.push(counter++); // Add serial number
+    for (var j = 1; j < values[i].length; j++) {
+      // Format date in column B to "dd/MMM/yyyy"
+      if (j === 1 && values[i][j] instanceof Date) {
+        row.push(Utilities.formatDate(values[i][j], Session.getScriptTimeZone(), "dd/MMM/yyyy"));
+      } else {
+        row.push(values[i][j]);
+      }
+    }
+    csv += '"' + row.join('","') + '"\n';
+  }
+
+  // Compose email
+  var subject = "Booking Data - Truck central speed Post Customer id- 3000060048 " + formattedDate;
+  var message = "Dear Sir,\n\nPlease find attached today's dispatched details " + formattedDate + ".\n\nThanks and regards,\n\nOur Mantra: Full ATH in 48 Hours, BTH in Three Weeks and POD in Two Weeks\n\nNaveen Kumar M\n\nOperations Lead, HO, Lobb\nTruckcentral Solutions Pvt Ltd\nMob: +91 97383 87222 / Mob : 7892218457\nE-mail- naveenkumar.m@lobb.in";
+  // var email = "NAVEENKUMAR.M@LOBB.IN";
+  //  var cc = "NAVEEN@TESTMAIL.COM";
+  var email = "spccbnpls@gmail.com,gnkprasanna@gmail.com";
+  var cc = "pod@lobb.in,accounts@lobb.in";
+
+  // Send email with attachment
+  MailApp.sendEmail({
+    to: email,
+    cc: cc,
+    subject: subject,
+    body: message,
+    attachments: [{fileName: subject + ".csv", content: csv, mimeType: "text/csv"}]
+  });
+}

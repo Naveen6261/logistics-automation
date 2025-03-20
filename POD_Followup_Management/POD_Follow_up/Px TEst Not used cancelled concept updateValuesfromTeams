@@ -1,0 +1,66 @@
+// copy the values from the team sheet o pod master data not usefull if POD master data does not contain the distributed data 
+//test slow running efficiency to be improved
+
+function updateValuesfromteams(X) {
+  var sheetId = "1vMeA-Ddr9WpyxgtrJD6he8RspGDGiSzBbP0vaQxyWxg"; //Demo sheet
+  var ss = SpreadsheetApp.openById(sheetId);
+  var podMasterDataSheet = ss.getSheetByName("POD Master Data");
+
+  var teamSheets = [
+    "Team Member 1",
+    "Team Member 2",
+    "Team Member 3",
+    "Team Member 4",
+    "Team Member 5"
+  ];
+
+  var startRow = 3;  // Update starting from row 3
+  var lastRow = podMasterDataSheet.getLastRow();
+  var podMasterData = podMasterDataSheet.getRange('F' + startRow + ':F' + lastRow).getValues();
+
+  var columns = ['Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X'];
+  var columnIndexes = [16, 17, 18, 19, 20, 21, 22, 23];  // Corresponding 0-based indexes for Q-X
+
+  // Load all team sheets data into memory
+  var teamData = {};
+  for (var i = 0; i < teamSheets.length; i++) {
+    var sheet = ss.getSheetByName(teamSheets[i]);
+    var data = sheet.getRange('F1:Z' + sheet.getLastRow()).getValues();
+    teamData[teamSheets[i]] = data;
+  }
+
+  // Iterate through each row in the POD Master Data sheet
+  for (var row = 0; row < podMasterData.length; row++) {
+    var lookupValue = podMasterData[row][0];
+
+    if (lookupValue) {
+      var valuesToSet = [];
+
+      // Check each team sheet for the lookup value
+      for (var i = 0; i < teamSheets.length; i++) {
+        var data = teamData[teamSheets[i]];
+        
+        // Search for the lookup value in the team sheet data
+        for (var k = 1; k < data.length; k++) {  // Start from row 2 to skip header row
+          if (data[k][0] == lookupValue) {
+            // If value found, get corresponding columns Q-X values
+            for (var j = 0; j < columns.length; j++) {
+              var value = data[k][columnIndexes[j] - 6];  // Adjust index as data starts from column F
+              valuesToSet[j] = value || '';
+            }
+            break;
+          }
+        }
+      }
+
+      // Set the found values in the POD Master Data sheet
+      if (valuesToSet.length > 0) {
+        for (var j = 0; j < columns.length; j++) {
+          podMasterDataSheet.getRange(columns[j] + (row + startRow)).setValue(valuesToSet[j]);
+        }
+      }
+    }
+  }
+
+  Logger.log("Values updated successfully.");
+}
