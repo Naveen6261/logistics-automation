@@ -40,8 +40,8 @@ function shouldSendReport() {
 
 
 function iftruesendEmailWithSummary(){
-var resu=doSendEmailWithSummary("dhanush.nk@lobb.in,lingaraj.ops@lobb.in,bhavani.ops@lobb.in,pooja.r@lobb.in");
-var resu=doSendEmailWithSummary("naveenkumar.m@lobb.in");
+var resu=doSendEmailWithSummary("POD@lobb.in");
+var resu=doSendEmailWithSummary("naveenkumar.m@lobb.in,mylari.gupta@lobb.in");
 }
 
 function doSendEmailWithSummary(toAddress) {
@@ -135,6 +135,7 @@ function doSendEmailWithSummary(toAddress) {
 
   MailApp.sendEmail({
     to: toAddress,
+    bcc: 'branchpod@lobb.in', // Adding BCC 22March 2025
     subject: 'POD Uploaded Summary Today ' + today,
     htmlBody: emailBody,
     attachments: [blob]
