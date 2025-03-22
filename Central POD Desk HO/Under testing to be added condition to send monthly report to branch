@@ -1,0 +1,48 @@
+//under testing to be added condition to send monthly report to branch
+function sendMonthlyReport() {
+  var today = new Date();
+  var dayOfMonth = today.getDate();
+  var hourOfDay = today.getHours();
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Summary");
+
+  if (!sheet) {
+    Logger.log("Sheet 'Summary' not found!");
+    return;
+  }
+
+  var summaryCell = sheet.getRange("B1");
+
+  // If today is the 1st of the month and it's before 12 PM
+  if (dayOfMonth === 1 && hourOfDay < 12) {
+    summaryCell.setValue(31); // Update to 31
+    Logger.log("Updated 'Summary'!B1 to 31.");
+
+    // Call shouldSendReport function
+    if (shouldSendReport()) {
+      doSendEmailWithSummary("dhanush.nk@lobb.in,lingaraj.ops@lobb.in,bhavani.ops@lobb.in,pooja.r@lobb.in");
+      doSendEmailWithSummary("naveenkumar.m@lobb.in");
+
+      // Reset the cell to 0 after sending
+      summaryCell.setValue(0);
+      Logger.log("Reset 'Summary'!B1 to 0 after sending the monthly report.");
+    } else {
+      Logger.log("Monthly report email not sent due to a holiday or Sunday.");
+    }
+  }
+}
+
+// Daily check at 7 PM to reset 'Summary'!B1 if it is still 31
+function resetSummaryCell() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Summary");
+  if (!sheet) return;
+  
+  var summaryCell = sheet.getRange("B1");
+  var currentValue = summaryCell.getValue();
+  
+  if (currentValue == 31) { 
+    summaryCell.setValue(0);
+    Logger.log("Reset 'Summary'!B1 to 0 before the 8 PM trigger (was 31).");
+  } else {
+    Logger.log("'Summary'!B1 not reset because it was manually changed to " + currentValue);
+  }
+}
