@@ -21,9 +21,17 @@ function copyDataToDestination() {
   var completedCount = 0;
   var infoNotAvailableCount = 0;
 
+  var oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+
   for (var i = 0; i < sourceData.length; i++) {
     // Check if column K contains "Completed", or "Info Not Available" and column AM is empty
-    if ((sourceColumnK[i][0] === "Completed" ||sourceColumnK[i][0] === "Info Not Available") && sourceColumnAM[i][0] === "") {
+    //if ((sourceColumnK[i][0] === "Completed" ||sourceColumnK[i][0] === "Info Not Available") && sourceColumnAM[i][0] === "") {
+  var columnEDate = new Date(sourceData[i][4]);
+
+  if (((sourceColumnK[i][0] === "Completed" || sourceColumnK[i][0] === "Info Not Available") || columnEDate < oneWeekAgo) && sourceColumnAM[i][0] === "") {
+
       // Format the dates in dd/MMM/yyyy format
       var loadingDate = Utilities.formatDate(new Date(sourceData[i][3]), Session.getScriptTimeZone(), "dd/MMM/yyyy");
       var unloadingDate = sourceData[i][17] ? Utilities.formatDate(new Date(sourceData[i][17]), Session.getScriptTimeZone(), "dd/MMM/yyyy") : "Info Not Available"; // Check if unloading date is empty
@@ -134,13 +142,4 @@ function onOpen() {
   ui.createMenu('Download')
     .addItem('Copy data from tracking sheet', 'copyDataToDestination')
     .addToUi();
-}
-
-appscript.JSON
-{
-  "timeZone": "Asia/Kolkata",
-  "dependencies": {
-  },
-  "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8"
 }
