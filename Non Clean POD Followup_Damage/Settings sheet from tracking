@@ -1,0 +1,36 @@
+function combineFollowupAndResolvedOptimized() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet1 = ss.getSheetByName("FOLLOWUP_DAMAGE");
+  const sheet2 = ss.getSheetByName("Resolved");
+  const combinedSheet = ss.getSheetByName("Combined") || ss.insertSheet("Combined");
+
+  // Clear previous content from row 2 onwards (keeping header)
+  combinedSheet.getRange("A2:W" + combinedSheet.getLastRow()).clearContent();
+
+  // Get data ranges more efficiently by trimming only to used rows
+  const lastRow1 = sheet1.getLastRow();
+  const lastRow2 = sheet2.getLastRow();
+
+  let data1 = [];
+  if (lastRow1 >= 5) {
+    data1 = sheet1.getRange(5, 1, lastRow1 - 4, 23).getValues().filter(row => row.join("") !== "");
+  }
+
+  let data2 = [];
+  if (lastRow2 >= 2) {
+    data2 = sheet2.getRange(2, 1, lastRow2 - 1, 23).getValues().filter(row => row.join("") !== "");
+  }
+
+  const combinedData = data1.concat(data2);
+
+  if (combinedData.length > 0) {
+    // Ensure Combined sheet has enough rows
+    const requiredRows = combinedData.length + 1; // +1 for header
+    if (combinedSheet.getMaxRows() < requiredRows) {
+      combinedSheet.insertRowsAfter(combinedSheet.getMaxRows(), requiredRows - combinedSheet.getMaxRows());
+    }
+
+    // Write combined data starting at row 2
+    combinedSheet.getRange(2, 1, combinedData.length, 23).setValues(combinedData);
+  }
+}
