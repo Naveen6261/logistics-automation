@@ -1,0 +1,52 @@
+function FD2_CopyPODData() {
+  const sourceSheetId = '1GUcnKamjAkETXtlHzzwaVhVt3QZS_LMyF08Gft9XrLw';
+  const sourceSheetName = 'POD Processed';
+  const targetSheetId = '1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro';
+  const targetSheetName = 'FOLLOWUP_DAMAGE';
+  const logsSheetName = 'LOGS';
+
+  const sourceSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(sourceSheetName);
+  const targetSheet = SpreadsheetApp.openById(targetSheetId).getSheetByName(targetSheetName);
+  const logsSheet = SpreadsheetApp.openById(targetSheetId).getSheetByName(logsSheetName);
+
+  const sourceData = sourceSheet.getDataRange().getValues();
+  const targetData = targetSheet.getDataRange().getValues();
+  const newRows = [];
+  const dateTime = new Date();
+
+  // Create a set of unique values from Column D (index 3) in the target sheet
+  const existingColumnDValues = new Set(targetData.map(row => row[3]?.toString().trim()));
+
+  // Define specific columns to copy from source
+  const columnIndexes = ["", 1, 6, 3, 10, 11, "", 15, "", 19, 20, 21, "", "", "", "", ""];
+
+  // Loop through source data starting from row 5 (index 4)
+  for (let i = 4; i < sourceData.length; i++) {
+    const podStatus = sourceData[i][14]?.toString().trim().toLowerCase(); // Column O (index 14)
+    const columnDValue = sourceData[i][3]?.toString().trim(); // Column D (index 3)
+
+    // Check if podStatus is 'yes' and Column D value is not in the target sheet
+    if (podStatus === 'false' && !existingColumnDValues.has(columnDValue)) {
+      const rowData = columnIndexes.map(index => (index !== "" ? sourceData[i][index] : ""));
+      newRows.push(rowData);
+      existingColumnDValues.add(columnDValue); // Add the new value to prevent future duplicates
+    }
+  }
+
+  // Add new rows to the target sheet if any are found
+  if (newRows.length > 0) {
+    const targetStartRow = Math.max(targetSheet.getLastRow() + 1, 5); // Ensure it starts at row 5
+    targetSheet.getRange(targetStartRow, 1, newRows.length, newRows[0].length).setValues(newRows);
+
+    // Add a timestamp in column AC (index 29) for each new row
+    for (let j = 0; j < newRows.length; j++) {
+      targetSheet.getRange(targetStartRow + j, 29).setValue(dateTime);
+    }
+
+    // Log the additions in the LOGS sheet
+    const logData = [[newRows.length, dateTime]];
+    logsSheet.getRange(logsSheet.getLastRow() + 1, 1, logData.length, logData[0].length).setValues(logData);
+  } else {
+    console.log("No new rows to copy.");
+  }
+}
