@@ -1,0 +1,211 @@
+// sends email with aging for resolved cases as well - not correct to not use - may be can be used if required to know the total caseses
+function sendFollowUpDamageEmails111() {
+  const ss = SpreadsheetApp.openById("1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro");
+  const followUpSheet = ss.getSheetByName("FOLLOWUP_DAMAGE");
+  const settingsSheet = ss.getSheetByName("Settings");
+
+  const followUpData = followUpSheet.getDataRange().getValues();
+  const headers = followUpData[0];
+  const filteredData = followUpData.slice(1).filter(row =>
+    !["Awaiting confirmation from Branch Manager", "Deduction Applied"].includes(row[6])
+  );
+
+  const settingsData = settingsSheet.getDataRange().getValues();
+
+  // Get aging buckets and highlight threshold from Settings sheet
+  const agingBuckets = settingsData
+    .find(row => row[38] === "Aging Buckets")[39]
+    .split(",")
+    .map(Number);
+
+  const highlightThreshold = parseInt(
+    settingsData.find(row => row[38] === "Aging Highlight Threshold")[39],
+    10
+  );
+
+  // Create a map of branch email and CC from Settings sheet
+  const branchEmailMap = settingsData.reduce((acc, row) => {
+    if (row[0] && (row[3] || row[7])) {
+      acc[row[0]] = { email: row[3], cc: row[7] };
+    }
+    return acc;
+  }, {});
+
+  // Filter dynamic messages for the category "POD AGING ABOVE 45DAYS"
+  const category = "POD AGING ABOVE 45DAYS";
+  const categoryMessages = settingsData
+    .filter(row => row[38] === category)
+    .map(row => row[39]);
+
+  function getRandomMessage() {
+    return categoryMessages[Math.floor(Math.random() * categoryMessages.length)];
+  }
+
+  function formatDateForEmail(date) {
+    if (date instanceof Date) {
+      const options = { year: 'numeric', month: 'short', day: '2-digit' };
+      return date.toLocaleDateString('en-US', options).replace(",", "");
+    }
+    return date;
+  }
+
+  // Helper function to escape commas in CSV data by wrapping in quotes
+  function escapeCsvValue(value) {
+    if (typeof value === 'string') {
+      if (value.includes(',') || value.includes('\n') || value.includes('"')) {
+        return `"${value.replace(/"/g, '""')}"`; // Double quotes inside value are escaped as ""
+      }
+    }
+    return value;
+  }
+
+  const branchNames = [...new Set(filteredData.map(row => row[2]))];
+  const today = new Date();
+
+  branchNames.forEach(branch => {
+    const branchData = filteredData.filter(row => row[2] === branch);
+    const branchEmails = branchEmailMap[branch];
+
+    if (!branchEmails) return;
+
+    // Calculate pivot data with aging buckets
+    const pivotData = {};
+    branchData.forEach(row => {
+      const status = row[6];
+      const aging = Math.floor((today - new Date(row[1])) / (1000 * 60 * 60 * 24));
+
+      if (!pivotData[status]) {
+        pivotData[status] = { count: 0 };
+        agingBuckets.forEach((_, i) => {
+          const bucketName = i === 0
+            ? `1-${agingBuckets[i]} days`
+            : `${agingBuckets[i - 1] + 1}-${agingBuckets[i]} days`;
+          pivotData[status][bucketName] = 0;
+        });
+        pivotData[status][`${agingBuckets[agingBuckets.length - 1] + 1} and Above`] = 0;
+      }
+
+      pivotData[status].count += 1;
+      for (let i = 0; i < agingBuckets.length; i++) {
+        if (aging <= agingBuckets[i]) {
+          const bucketName = i === 0
+            ? `1-${agingBuckets[i]} days`
+            : `${agingBuckets[i - 1] + 1}-${agingBuckets[i]} days`;
+          pivotData[status][bucketName] += 1;
+          return;
+        }
+      }
+      pivotData[status][`${agingBuckets[agingBuckets.length - 1] + 1} and Above`] += 1;
+    });
+
+    // Create pivot table
+    const pivotTable = `
+      <table style="border-collapse: collapse; table-layout: auto; margin-top: 20px;">
+        <tr style="background-color: #4CAF50; color: white;">
+          <th style="border: 1px solid #ddd; padding: 8px;">Follow-Up Status</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Transaction Count</th>
+          ${agingBuckets
+            .map((_, i) =>
+              `<th style="border: 1px solid #ddd; padding: 8px;">${
+                i === 0
+                  ? `1-${agingBuckets[i]} days`
+                  : `${agingBuckets[i - 1] + 1}-${agingBuckets[i]} days`
+              }</th>`
+            )
+            .join("")}
+          <th style="border: 1px solid #ddd; padding: 8px;">${agingBuckets[agingBuckets.length - 1] + 1} and Above</th>
+        </tr>
+        ${Object.entries(pivotData)
+          .map(([status, counts]) => `
+            <tr>
+              <td style="border: 1px solid #ddd; padding: 8px;">${status}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${counts.count}</td>
+              ${agingBuckets
+                .map((_, i) =>
+                  `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${
+                    i === 0
+                      ? counts[`1-${agingBuckets[i]} days`]
+                      : counts[`${agingBuckets[i - 1] + 1}-${agingBuckets[i]} days`]
+                  }</td>`
+                )
+                .join("")}
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center; ${
+                counts[`${agingBuckets[agingBuckets.length - 1] + 1} and Above`] > 0
+                  ? "color: red; font-weight: bold;"
+                  : ""
+              }">
+                ${counts[`${agingBuckets[agingBuckets.length - 1] + 1} and Above`]}
+              </td>
+            </tr>
+          `)
+          .join("")}
+      </table>
+    `;
+
+    // Create the second table with aging details
+    const tableRangeData = branchData.slice(0, 10).map(row => [
+      formatDateForEmail(row[1]), // Column B
+      row[7], // Column C
+      row[3], // Column D
+      row[6], // Column G
+      Math.floor((today - new Date(row[1])) / (1000 * 60 * 60 * 24)), // Aging
+    ]);
+
+    const tableRangeHeaders = ["Date Received", "Damage Remarks", "TXN Num", "Follow-Up Status", "Aging (Days)"];
+    const tableRangeHtml = `
+      <table style="border-collapse: collapse; table-layout: auto; margin-top: 20px;">
+        <tr style="background-color: #2196F3; color: white;">
+          ${tableRangeHeaders.map(header => `
+            <th style="border: 1px solid #ddd; padding: 8px;">${header}</th>
+          `).join("")}
+        </tr>
+        ${tableRangeData.map(row => `
+          <tr>
+            ${row.map((cell, index) => `
+              <td style="border: 1px solid #ddd; padding: 8px; ${index === row.length - 1 && cell > highlightThreshold ? "color: red; font-weight: bold;" : ""}">${cell}</td>
+            `).join("")}
+          </tr>
+        `).join("")}
+      </table>
+    `;
+
+    const randomMessage = getRandomMessage(); // Get a random dynamic message for the email
+
+    // CSV Content
+    const selectedColumns = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11,12,13,15, 21];
+    const csvHeaders = selectedColumns.map(col => headers[col]);
+    const csvDataRows = branchData.map(row =>
+      selectedColumns.map(col => escapeCsvValue(row[col]))
+    );
+    const csvContent = [
+      csvHeaders.join(","),
+      ...csvDataRows.map(row => row.join(","))
+    ].join("\n");
+    const csvBlob = Utilities.newBlob(csvContent, "text/csv", `${branch}_FollowUpDamage.csv`);
+
+    const emailBody = `
+      <p>Dear ${branch} Team,</p>
+      <p>${randomMessage}</p>
+      <h4>Weekly Pending Summary</h4>
+      ${pivotTable}
+      <h4>Details</h4>
+      ${tableRangeHtml}
+      <p>Note: Detailed data is attached as a CSV file.</p>
+      <p>Thanks & Regards,</p>
+      <p>Operations Executive</p>
+      <p>Mob 9967277032</p>
+      <p>Lobb HO</p>
+    `;
+
+    GmailApp.createDraft(
+      branchEmails.email,
+      `${branch} - Follow-Up Non Clean POD`,
+      "",
+      {
+        htmlBody: emailBody,
+        attachments: [csvBlob],
+        cc: `${branchEmails.cc},ranjan.jena@lobb.in, naveenkumar.m@lobb.in,mylari.gupta@lobb.in`
+      }
+    );
+  });
+}
