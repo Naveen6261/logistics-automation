@@ -1,0 +1,139 @@
+function draftNonCleanPODEmails() {
+  const trafficSheetId = '1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro';
+  const sheetName = 'details for branch';
+  const settingsSheetName = 'Settings';
+
+  const ss = SpreadsheetApp.openById(trafficSheetId);
+  const dataSheet = ss.getSheetByName(sheetName);
+  const settingsSheet = ss.getSheetByName(settingsSheetName);
+
+  const data = dataSheet.getRange('A2:G').getValues(); // Skip header
+  const settingsData = settingsSheet.getDataRange().getValues();
+
+  const trafficNameFilter = (settingsSheet.getRange('AO1').getValue() || '').toString().trim().toLowerCase();
+
+  // Build maps from Settings sheet
+  const nameToEmail = {};       // I:J (8:9)
+  const branchToCCEmails = {};  // A:E,H (0:4,7)
+
+  for (let i = 0; i < settingsData.length; i++) {
+    const row = settingsData[i];
+    const name = (row[8] || '').toString().trim().toLowerCase();  // Column I
+    const email = (row[9] || '').toString().trim();               // Column J
+    if (name) nameToEmail[name] = email;
+
+    const branch = (row[0] || '').toString().trim();
+    const emailE = (row[3] || '').toString().trim();              // Column E
+    const emailH = (row[7] || '').toString().trim();              // Column H
+    if (branch) {
+      branchToCCEmails[branch] = [emailE, emailH].filter(e => e);
+    }
+  }
+
+  // Group data rows by traffic person name (column A)
+  const groupedData = {};
+  data.forEach(row => {
+    const name = (row[0] || '').toString().trim();
+    if (!name) return;
+    if (!groupedData[name]) groupedData[name] = [];
+    groupedData[name].push(row);
+  });
+
+  // Get POD AGING messages
+  const podMessages = settingsData
+    .filter(r => (r[38] || '').toString().trim().toUpperCase() === 'POD AGING ABOVE 45DAYS') // AM
+    .map(r => (r[39] || '').toString().trim()) // AN
+    .filter(msg => msg);
+
+  let draftedUsers = [];
+
+  for (const name in groupedData) {
+    if (trafficNameFilter && trafficNameFilter !== 'all' && name.toLowerCase() !== trafficNameFilter) continue;
+
+    const trafficEmail = nameToEmail[name.toLowerCase()];
+    const userRows = groupedData[name];
+    if (!trafficEmail || userRows.length === 0) continue;
+
+    // Get branch from first row, column C
+    const branch = (userRows[0][2] || '').toString().trim();
+    const ccList = [...(branchToCCEmails[branch] || []), 'naveenkumar.m@lobb.in'];
+
+    const message = podMessages[Math.floor(Math.random() * podMessages.length)];
+    //const htmlTable = makeHTMLTable(['Name', 'Trip ID', 'LRN', 'Invoice', 'Branch', 'Remarks'], userRows);
+    const headers = dataSheet.getRange('A1:G1').getValues()[0];  // Get real headers
+    const htmlTable = makeHTMLTable(headers, userRows);
+
+    const ageSummary = getAgeSummary(userRows);
+
+    const emailBody = `
+      Hi ${name},<br><br>
+      ${message}<br><br>
+      <b>Age Summary:</b> ${ageSummary}<br><br>
+      ${htmlTable}<br><br>
+      Thanks and Regards,<br><br>
+      Team Non clean POD confirmation follow up.<br>
+      BLR HO
+    `;
+
+    const subject = `Follow-Up Non Clean POD (${name})`;
+
+    GmailApp.createDraft(trafficEmail, subject, '', {
+      htmlBody: emailBody,
+      cc: ccList.join(',')
+    });
+
+    draftedUsers.push(name);
+  }
+
+  Logger.log(`Drafted emails for: ${draftedUsers.length} traffic persons.`);
+}
+function getAgeSummary(userRows) {
+  const buckets = {
+    '0-3': 0,
+    '4-7': 0,
+    '8-14': 0,
+    '15-30': 0,
+    '>30': 0
+  };
+
+  userRows.forEach(row => {
+    const age = Number(row[6]); // Column G (index 6)
+    if (isNaN(age)) return;
+    if (age <= 3) buckets['0-3']++;
+    else if (age <= 7) buckets['4-7']++;
+    else if (age <= 14) buckets['8-14']++;
+    else if (age <= 30) buckets['15-30']++;
+    else buckets['>30']++;
+  });
+
+  // Format with >30 highlighted if value > 0
+  const summaryParts = Object.entries(buckets).map(([range, count]) => {
+    if (range === '>30' && count > 0) {
+      return `<b style="color: red;">${range}: ${count}</b>`;
+    }
+    return `${range}: ${count}`;
+  });
+
+  return summaryParts.join(', ');
+}
+
+function makeHTMLTable(headers, data) {
+  const columnIndexes = [1, 2, 3, 4, 5,6]; // Columns B to G (0-based)
+  let html = '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">';
+
+  html += '<tr>' + columnIndexes.map(i => `<th>${headers[i]}</th>`).join('') + '</tr>';
+
+  data.forEach(row => {
+    html += '<tr>' + columnIndexes.map(i => {
+      let cell = row[i];
+      if (i === 1 && cell instanceof Date) { // Format date in column B
+        cell = Utilities.formatDate(cell, Session.getScriptTimeZone(), 'dd/MMM/yyyy');
+      }
+      return `<td>${cell ?? ''}</td>`;
+    }).join('') + '</tr>';
+  });
+
+  html += '</table>';
+  return html;
+}
+
