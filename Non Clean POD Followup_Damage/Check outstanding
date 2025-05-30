@@ -1,0 +1,77 @@
+const xlsxUrl = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.3/xlsx.full.min.js';
+eval(UrlFetchApp.fetch(xlsxUrl).getContentText());
+
+function checkPODSearchData() {
+  const sheetId = "1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro";
+  const sheetName = "FOLLOWUP_DAMAGE";
+
+  // Get the most recent relevant email
+  const threads = GmailApp.search('from:mylari.gupta@lobb.in to:pod@lobb.in subject:"POD Search Data as of" filename:xlsx');
+  if (threads.length === 0) {
+    Logger.log("No relevant email found.");
+    return;
+  }
+
+  let attachment = null;
+  const messages = threads[0].getMessages();
+
+  // Find the Excel attachment
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const atts = messages[i].getAttachments();
+    for (let j = 0; j < atts.length; j++) {
+      if (atts[j].getContentType().includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) {
+        attachment = atts[j];
+        break;
+      }
+    }
+    if (attachment) break;
+  }
+
+  if (!attachment) {
+    Logger.log("No Excel attachment found.");
+    return;
+  }
+
+  // Convert Excel to data using xlsx.js
+  const workbook = XLSX.read(attachment.getBytes(), { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const excelData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+  // Extract column D values (index 3)
+  const podTxnSet = new Set(
+    excelData.map(row => row[3]).filter(v => v).map(v => v.toString().trim())
+  );
+
+  // Open the target sheet
+  const ss = SpreadsheetApp.openById(sheetId);
+  const followupSheet = ss.getSheetByName(sheetName);
+  const lastRow = followupSheet.getLastRow();
+
+  const followupTxn = followupSheet.getRange(6, 4, lastRow - 5).getValues().flat(); // Column D
+  const colGValues = followupSheet.getRange(6, 7, followupTxn.length).getValues().flat(); // Column G
+
+  const result = [];
+  let notFoundCount = 0;
+
+  for (let i = 0; i < followupTxn.length; i++) {
+    const txn = followupTxn[i];
+    const statusG = colGValues[i];
+
+    if (statusG === "Resolved without deduction" || statusG === "Deduction Applied") {
+      result.push([statusG]);
+    } else if (!podTxnSet.has(txn.toString().trim())) {
+      result.push(["Not Found in POD Search Data"]);
+      notFoundCount++;
+    } else {
+      result.push([""]);
+    }
+  }
+
+  // Write results to column U starting at row 6
+  followupSheet.getRange(6, 21, result.length, 1).setValues(result);
+
+  // Write total count in U2
+  followupSheet.getRange("U2").setValue(notFoundCount);
+
+  Logger.log("Check completed. Not found count: " + notFoundCount);
+}
