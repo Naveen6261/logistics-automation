@@ -1,4 +1,4 @@
-// added filter to remove the resolved trips
+// added filter to remove the resolved trips // the script is correct but ensure the data is all same from branch name it is case sensitive- if one branch name is lower case and one branch same branch name has upper case the script will take only one litem in the output
 function sendFollowUpDamageEmails() {
   const ss = SpreadsheetApp.openById("1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro");
   const followUpSheet = ss.getSheetByName("FOLLOWUP_DAMAGE");
