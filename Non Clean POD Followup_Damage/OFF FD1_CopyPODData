@@ -1,0 +1,46 @@
+function FD1_CopyPODData() { // for the columns to extract from a to k
+  const sourceSheetId = '189rAmrwW05wnRk8-PVmEBY3PKwNFNy04cJMXyyQ04y4';
+  const sourceSheetName = 'POD Processed';
+  const targetSheetId = '1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro';
+  const targetSheetName = 'FOLLOWUP_DAMAGE';
+  const logsSheetName = 'LOGS';
+
+  const sourceSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(sourceSheetName);
+  const targetSheet = SpreadsheetApp.openById(targetSheetId).getSheetByName(targetSheetName);
+  const logsSheet = SpreadsheetApp.openById(targetSheetId).getSheetByName(logsSheetName);
+
+  const sourceData = sourceSheet.getDataRange().getValues();
+  const targetData = targetSheet.getDataRange().getValues();
+  const newRows = [];
+  const dateTime = new Date();
+
+  // Create a set of existing unique identifiers (column A and column D) from the target sheet
+  const existingIdentifiers = new Set(targetData.map(row => `${row[0]}|${row[3]}`)); // Column A (index 0) and TXN Num (index 3)
+
+  // Start from row 5 (index 4) and check for "Yes" in column O (index 14)
+  for (let i = 4; i < sourceData.length; i++) {
+    const podStatus = sourceData[i][14] ? sourceData[i][14].toString().trim().toLowerCase() : '';
+    const identifier = `${sourceData[i][0]}|${sourceData[i][3]}`; // Combine column A and TXN Num
+
+    if (podStatus === 'TRUE') { // Check for 'yes' in lowercase
+      if (!existingIdentifiers.has(identifier)) {
+        newRows.push(sourceData[i]);
+      }
+    }
+  }
+
+  // If new rows were found, copy them to the target sheet
+  if (newRows.length > 0) {
+    const targetStartRow = Math.max(targetSheet.getLastRow() + 1, 5); // Ensure it starts from row 5
+    targetSheet.getRange(targetStartRow, 1, newRows.length, newRows[0].length).setValues(newRows);
+
+    // Add date and time in column AC (index 29) for each new row
+    for (let j = 0; j < newRows.length; j++) {
+      targetSheet.getRange(targetStartRow + j, 29).setValue(dateTime);
+    }
+
+    // Log the additions in the LOGS sheet
+    const logData = [[newRows.length, dateTime]];
+    logsSheet.getRange(logsSheet.getLastRow() + 1, 1, logData.length, logData[0].length).setValues(logData);
+  }
+}
