@@ -1,0 +1,53 @@
+//revised1.1
+function applyFollowUpDamageCalculations() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const followupSheet = ss.getSheetByName("FOLLOWUP_DAMAGE");
+  const osSheet = ss.getSheetByName("os");
+
+  const startRow = 5;
+  const maxCheckRange = 2000; // Limit how many rows to scan (adjust as needed)
+  
+  // Read more than needed, then trim
+  const colB = followupSheet.getRange(startRow, 2, maxCheckRange).getValues(); // Column B
+  const colD = followupSheet.getRange(startRow, 4, maxCheckRange).getValues(); // Column D
+
+  // Find the actual last row with data in either B or D
+  let numRows = 0;
+  for (let i = 0; i < maxCheckRange; i++) {
+    if (colB[i][0] !== "" || colD[i][0] !== "") {
+      numRows = i + 1;
+    }
+  }
+
+  if (numRows < 1) return;
+
+  const trimmedColB = colB.slice(0, numRows);
+  const trimmedColD = colD.slice(0, numRows);
+
+  // Load lookup data from os sheet
+  const osData = osSheet.getRange("H2:I" + osSheet.getLastRow()).getValues();
+  const osMap = {};
+  osData.forEach(([key, value]) => {
+    if (key) osMap[key] = value;
+  });
+
+  const today = new Date();
+  const colV = [], colAB = [], colAD = [];
+
+  for (let i = 0; i < numRows; i++) {
+    const bDate = trimmedColB[i][0];
+    colV.push([bDate ? Math.floor((today - new Date(bDate)) / (1000 * 60 * 60 * 24)) : ""]);
+
+    const dVal = trimmedColD[i][0];
+    colAB.push([dVal in osMap ? dVal : ""]);
+    colAD.push([osMap[dVal] ?? ""]);
+  }
+
+  followupSheet.getRange(startRow, 22, numRows, 1).setValues(colV);  // Column V
+  followupSheet.getRange(startRow, 28, numRows, 1).setValues(colAB); // Column AB
+  followupSheet.getRange(startRow, 30, numRows, 1).setValues(colAD); // Column AD
+
+  // Save today's run date
+  const scriptProperties = PropertiesService.getScriptProperties();
+  scriptProperties.setProperty('lastFollowUpCalculationDate', Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+}
