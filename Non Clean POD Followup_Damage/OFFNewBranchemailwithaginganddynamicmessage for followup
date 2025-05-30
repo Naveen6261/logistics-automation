@@ -1,4 +1,4 @@
-// sends email with aging for resolved cases as well - not correct to not use - may be can be used if required to know the total caseses
+// /sends email with aging for resolved cases as well - not correct to not use - may be can be used if required to know the total caseses
 function sendFollowUpDamageEmails111() {
   const ss = SpreadsheetApp.openById("1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro");
   const followUpSheet = ss.getSheetByName("FOLLOWUP_DAMAGE");
