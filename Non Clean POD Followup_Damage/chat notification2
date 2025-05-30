@@ -1,0 +1,93 @@
+function sendChartToWebhook() {
+    try {
+        var sheet = SpreadsheetApp.openById("1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro");
+        var data = sheet.getSheetByName("Summary").getRange("E2:F7").getValues();
+
+        var chart = createChart(data);
+        var imageUrl = uploadChartToDrive(chart);
+
+        if (!imageUrl) {
+            Logger.log("Image upload failed. Skipping webhook message.");
+            return;
+        }
+
+        var url = "https://chat.googleapis.com/v1/spaces/AAAAvyJ1noY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=aOwO9BjMzpeE_cIvUKBhlibmnVrYzHRvEXdAcLwQ1HE";
+
+        var payload = {
+            text: "📊 *Today's Summary Report*",
+            cards: [
+                {
+                    sections: [
+                        {
+                            widgets: [
+                                {
+                                    image: { 
+                                        imageUrl: imageUrl  // Using public Google Drive link
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var options = {
+            method: "post",
+            contentType: "application/json",
+            payload: JSON.stringify(payload)
+        };
+
+        UrlFetchApp.fetch(url, options);
+        Logger.log("✅ Chart sent successfully to Google Chat!");
+
+    } catch (e) {
+        Logger.log("❌ Error in sendChartToWebhook: " + e.toString());
+    }
+}
+
+function createChart(data) {
+    try {
+        var dataTable = Charts.newDataTable()
+            .addColumn(Charts.ColumnType.STRING, "Category")
+            .addColumn(Charts.ColumnType.NUMBER, "Value");
+
+        data.forEach(row => {
+            var category = row[0].toString();
+            var value = parseFloat(row[1]);
+            if (!isNaN(value)) {
+                dataTable.addRow([category, value]);
+            }
+        });
+
+        return Charts.newPieChart()
+            .setDataTable(dataTable.build())
+            .setTitle("Summary Report")
+            .setDimensions(600, 400)
+            .build();
+    } catch (e) {
+        Logger.log("❌ Error in createChart: " + e.toString());
+        throw e;
+    }
+}
+
+function uploadChartToDrive(chart) {
+    try {
+        var folderId = "1Ml3VYtC22W__wSbRcV1d1F-OqRq1BsCM";  // Replace with a public folder ID
+        var folder = DriveApp.getFolderById(folderId);
+        var fileName = "SummaryChart_" + new Date().getTime() + ".png";
+
+        var blob = chart.getAs("image/png").setName(fileName);
+        var file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE, DriveApp.Permission.VIEW);
+
+        // Use the recommended URL format
+        var imageUrl = "https://lh3.google.com/u/0/d/" + file.getId();
+        Logger.log("✅ Image uploaded successfully: " + imageUrl);
+        return imageUrl;
+
+    } catch (e) {
+        Logger.log("❌ Error in uploadChartToDrive: " + e.toString());
+        return null;
+    }
+}
