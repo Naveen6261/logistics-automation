@@ -1,36 +1,29 @@
-function combineFollowupAndResolvedOptimized() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet1 = ss.getSheetByName("FOLLOWUP_DAMAGE");
-  const sheet2 = ss.getSheetByName("Resolved");
-  const combinedSheet = ss.getSheetByName("Combined") || ss.insertSheet("Combined");
+function importSettingsDataWithLinks() {
+  const sourceSheetId = "1cWcN1OAIg3gdU5zUTh70-XZwIB9h2oaAR2sAn0aAD7c";
+  const destinationSheetId = "1AKbWp113spO_CBmyR0hOR-NCrMyV8NaRqo7Q43wr_ro";
 
-  // Clear previous content from row 2 onwards (keeping header)
-  combinedSheet.getRange("A2:W" + combinedSheet.getLastRow()).clearContent();
+  const sheetName = "Settings";
+  const rangeA1 = "I2:K";
 
-  // Get data ranges more efficiently by trimming only to used rows
-  const lastRow1 = sheet1.getLastRow();
-  const lastRow2 = sheet2.getLastRow();
+  const sourceSheet = SpreadsheetApp.openById(sourceSheetId).getSheetByName(sheetName);
+  const destinationSheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(sheetName);
 
-  let data1 = [];
-  if (lastRow1 >= 5) {
-    data1 = sheet1.getRange(5, 1, lastRow1 - 4, 23).getValues().filter(row => row.join("") !== "");
-  }
+  const sourceRange = sourceSheet.getRange(rangeA1);
+  const numRows = sourceRange.getNumRows();
+  const numCols = sourceRange.getNumColumns();
 
-  let data2 = [];
-  if (lastRow2 >= 2) {
-    data2 = sheet2.getRange(2, 1, lastRow2 - 1, 23).getValues().filter(row => row.join("") !== "");
-  }
+  const richTextValues = sourceRange.getRichTextValues();
+  const destinationRange = destinationSheet.getRange("I2").offset(0, 0, numRows, numCols);
 
-  const combinedData = data1.concat(data2);
+  const destinationRichTexts = [];
 
-  if (combinedData.length > 0) {
-    // Ensure Combined sheet has enough rows
-    const requiredRows = combinedData.length + 1; // +1 for header
-    if (combinedSheet.getMaxRows() < requiredRows) {
-      combinedSheet.insertRowsAfter(combinedSheet.getMaxRows(), requiredRows - combinedSheet.getMaxRows());
+  for (let i = 0; i < richTextValues.length; i++) {
+    const row = [];
+    for (let j = 0; j < richTextValues[i].length; j++) {
+      row.push(richTextValues[i][j]);
     }
-
-    // Write combined data starting at row 2
-    combinedSheet.getRange(2, 1, combinedData.length, 23).setValues(combinedData);
+    destinationRichTexts.push(row);
   }
+
+  destinationRange.setRichTextValues(destinationRichTexts);
 }
