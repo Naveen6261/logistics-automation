@@ -1,4 +1,4 @@
-function createPowerBIDashboard() {
+function createVehicleTrackingDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const dashboardSheetName = "Index";
   let dashboardSheet = ss.getSheetByName(dashboardSheetName);
@@ -10,56 +10,75 @@ function createPowerBIDashboard() {
     dashboardSheet.clear();
   }
 
-  // Define headers
+  // Header titles for vehicle tracking dashboard
   const headers = [
-    "📄 Sheet Name",
+    "🚚 Vehicle Sheet",
     "🔗 Open Sheet",
     "📝 Description",
-    "⚙️ Current status",
+    "📍 Current Status",
     "🎟️ IT Ticket",
-    "📅 Expected date to close/Shut Gsheet respective task"
+    "📅 Expected Closure Date"
   ];
 
-  // Set headers
+  // Set header styling
   const headerRange = dashboardSheet.getRange(1, 1, 1, headers.length);
   headerRange.setValues([headers]);
   headerRange.setFontWeight("bold")
-             .setFontSize(12)
-             .setBackground("#4b6cb7")  // Blue tone
-             .setFontColor("white");
+             .setFontSize(13)
+             .setBackground("#1E88E5")  // Bold blue
+             .setFontColor("white")
+             .setHorizontalAlignment("center");
 
-  // Get all sheets except the dashboard
+  // Get all sheets except the dashboard itself
   const sheets = ss.getSheets().filter(s => s.getName() !== dashboardSheetName);
 
-  // Build data
-  let data = sheets.map(sheet => {
+  // Data rows with vehicle icon and open link
+  const data = sheets.map(sheet => {
     const name = sheet.getName();
-    const sheetNameWithIcon = `📄 ${name}`;
-    const openLink = `=HYPERLINK("#gid=${sheet.getSheetId()}", "🔗 Open")`;
-    return [sheetNameWithIcon, openLink, "", "", "", ""];
+    const vehicleName = `🚛 ${name}`;
+    const openLink = `=HYPERLINK("#gid=${sheet.getSheetId()}", "🔗 View")`;
+    return [vehicleName, openLink, "", "", "", ""];
   });
 
-  // Set the data rows
+  // Add data
   if (data.length > 0) {
     dashboardSheet.getRange(2, 1, data.length, headers.length).setValues(data);
   }
 
-  // Column widths
-  dashboardSheet.setColumnWidth(1, 220);  // Sheet Name
-  dashboardSheet.setColumnWidth(2, 90);   // Open Sheet
-  dashboardSheet.setColumnWidth(3, 300);  // Description
-  dashboardSheet.setColumnWidth(4, 140);  // Status
-  dashboardSheet.setColumnWidth(5, 120);  // Ticket
-  dashboardSheet.setColumnWidth(6, 240);  // Expected date
-
-  // Apply alternating colors
+  // Apply alternating color banding for rows
   dashboardSheet.getRange(2, 1, data.length, headers.length)
-    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY);
+    .applyRowBanding(SpreadsheetApp.BandingTheme.BLUE);
 
-  // Freeze header
+  // Freeze the top row for headers
   dashboardSheet.setFrozenRows(1);
 
-  // Add table borders
+  // Adjust column widths for a clean layout
+  const columnWidths = [220, 100, 320, 160, 120, 200];
+  columnWidths.forEach((width, i) => {
+    dashboardSheet.setColumnWidth(i + 1, width);
+  });
+
+  // Add thick border to the full table
   dashboardSheet.getRange(1, 1, data.length + 1, headers.length)
-    .setBorder(true, true, true, true, null, null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    .setBorder(true, true, true, true, true, true, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  // Set font style
+  dashboardSheet.getRange(2, 1, data.length, headers.length)
+    .setFontSize(11)
+    .setFontFamily("Calibri");
+
+  // Optional: Center align status-related columns
+  dashboardSheet.getRange(2, 4, data.length, 3).setHorizontalAlignment("center");
+
+  // Optional: Add a title above the dashboard
+  dashboardSheet.insertRows(1);
+  const title = dashboardSheet.getRange("A1:F1");
+  title.merge();
+  title.setValue("🚗 Vehicle Tracking Dashboard")
+       .setFontSize(16)
+       .setFontWeight("bold")
+       .setBackground("#0D47A1")
+       .setFontColor("white")
+       .setHorizontalAlignment("center")
+       .setVerticalAlignment("middle");
 }
