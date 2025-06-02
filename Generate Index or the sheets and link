@@ -1,0 +1,43 @@
+function index() {
+  const indexSheetName = "Index";
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let indexSheet = ss.getSheetByName(indexSheetName);
+
+  if (!indexSheet) {
+    indexSheet = ss.insertSheet(indexSheetName);
+  }
+
+  const sheets = ss.getSheets();
+  const sheetData = indexSheet.getDataRange().getValues();
+
+  // Map existing sheet names (from column A)
+  let existingSheetMap = {};
+  for (let i = 1; i < sheetData.length; i++) {
+    const name = sheetData[i][0];
+    if (typeof name === 'string' && name !== "") {
+      const plainName = name.replace(/.*?"(.*?)".*/, '$1'); // extract sheet name from hyperlink formula if any
+      existingSheetMap[plainName] = true;
+    }
+  }
+
+  let newRows = [];
+
+  for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i];
+    const name = sheet.getName();
+
+    if (name !== indexSheetName && !existingSheetMap[name]) {
+      const linkFormula = `=HYPERLINK("#gid=${sheet.getSheetId()}", "${name}")`;
+      newRows.push([linkFormula, ""]);
+    }
+  }
+
+  if (sheetData.length === 0) {
+    indexSheet.getRange("A1:B1").setValues([["Sheet Name", "Description"]]).setFontWeight("bold");
+  }
+
+  if (newRows.length > 0) {
+    const lastRow = indexSheet.getLastRow();
+    indexSheet.getRange(lastRow + 1, 1, newRows.length, 2).setFormulas(newRows);
+  }
+}
