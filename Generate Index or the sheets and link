@@ -1,43 +1,65 @@
-function index() {
-  const indexSheetName = "Index";
+function createPowerBIDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let indexSheet = ss.getSheetByName(indexSheetName);
+  const dashboardSheetName = "Index";
+  let dashboardSheet = ss.getSheetByName(dashboardSheetName);
 
-  if (!indexSheet) {
-    indexSheet = ss.insertSheet(indexSheetName);
+  // Create or clear the dashboard sheet
+  if (!dashboardSheet) {
+    dashboardSheet = ss.insertSheet(dashboardSheetName);
+  } else {
+    dashboardSheet.clear();
   }
 
-  const sheets = ss.getSheets();
-  const sheetData = indexSheet.getDataRange().getValues();
+  // Define headers
+  const headers = [
+    "📄 Sheet Name",
+    "🔗 Open Sheet",
+    "📝 Description",
+    "⚙️ Current status",
+    "🎟️ IT Ticket",
+    "📅 Expected date to close/Shut Gsheet respective task"
+  ];
 
-  // Map existing sheet names (from column A)
-  let existingSheetMap = {};
-  for (let i = 1; i < sheetData.length; i++) {
-    const name = sheetData[i][0];
-    if (typeof name === 'string' && name !== "") {
-      const plainName = name.replace(/.*?"(.*?)".*/, '$1'); // extract sheet name from hyperlink formula if any
-      existingSheetMap[plainName] = true;
-    }
-  }
+  // Set headers
+  const headerRange = dashboardSheet.getRange(1, 1, 1, headers.length);
+  headerRange.setValues([headers]);
+  headerRange.setFontWeight("bold")
+             .setFontSize(12)
+             .setBackground("#4b6cb7")  // Blue tone
+             .setFontColor("white");
 
-  let newRows = [];
+  // Get all sheets except the dashboard
+  const sheets = ss.getSheets().filter(s => s.getName() !== dashboardSheetName);
 
-  for (let i = 0; i < sheets.length; i++) {
-    const sheet = sheets[i];
+  // Build data
+  let data = sheets.map(sheet => {
     const name = sheet.getName();
+    const sheetNameWithIcon = `📄 ${name}`;
+    const openLink = `=HYPERLINK("#gid=${sheet.getSheetId()}", "🔗 Open")`;
+    return [sheetNameWithIcon, openLink, "", "", "", ""];
+  });
 
-    if (name !== indexSheetName && !existingSheetMap[name]) {
-      const linkFormula = `=HYPERLINK("#gid=${sheet.getSheetId()}", "${name}")`;
-      newRows.push([linkFormula, ""]);
-    }
+  // Set the data rows
+  if (data.length > 0) {
+    dashboardSheet.getRange(2, 1, data.length, headers.length).setValues(data);
   }
 
-  if (sheetData.length === 0) {
-    indexSheet.getRange("A1:B1").setValues([["Sheet Name", "Description"]]).setFontWeight("bold");
-  }
+  // Column widths
+  dashboardSheet.setColumnWidth(1, 220);  // Sheet Name
+  dashboardSheet.setColumnWidth(2, 90);   // Open Sheet
+  dashboardSheet.setColumnWidth(3, 300);  // Description
+  dashboardSheet.setColumnWidth(4, 140);  // Status
+  dashboardSheet.setColumnWidth(5, 120);  // Ticket
+  dashboardSheet.setColumnWidth(6, 240);  // Expected date
 
-  if (newRows.length > 0) {
-    const lastRow = indexSheet.getLastRow();
-    indexSheet.getRange(lastRow + 1, 1, newRows.length, 2).setFormulas(newRows);
-  }
+  // Apply alternating colors
+  dashboardSheet.getRange(2, 1, data.length, headers.length)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY);
+
+  // Freeze header
+  dashboardSheet.setFrozenRows(1);
+
+  // Add table borders
+  dashboardSheet.getRange(1, 1, data.length + 1, headers.length)
+    .setBorder(true, true, true, true, null, null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 }
