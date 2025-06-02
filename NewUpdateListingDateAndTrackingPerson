@@ -1,0 +1,112 @@
+
+function NewUpdateListingDateAndTrackingPerson() {
+  if (ListedDateCol == null) {
+    NewAssignHeaderColumnNumbers();
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var today = new Date(); 
+  var beginningRow = findLastFilledCellInColumn(sheet, 2);
+  var lastRow = findLastFilledCellInColumn(sheet, 3);
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  var sourceArray = [];
+
+  if (beginningRow == lastRow) {
+    showMessageBoxOK("Nothing to Update", "All transactions are updated with names of the traffic team");
+    return;
+  }
+
+  beginningRow++;
+  
+  MoveValuesBetweenColumns(sheet);
+
+  // set New to column S
+  CopyToRange(sheet, "K", beginningRow, lastRow, "New");
+
+  // set Listing Date to column B
+  CopyToRange(sheet, "B", beginningRow, lastRow, today);
+
+  EqualBranchAllocation(beginningRow, lastRow, sourceArray);
+  CopyToRange(sheet, "A", beginningRow, lastRow, sourceArray);
+
+  // Overwrite names in column A based on values in column V
+  overwriteNamesBasedOnColumnV(sheet, beginningRow, lastRow, settingsSheet);
+}
+
+function CopyToRange(actionSheet, columnName, beginningRow, lastRow, valueToPaste) {
+  var targetRange = actionSheet.getRange(columnName + beginningRow + ":" + columnName + lastRow).activate();
+  if (Array.isArray(valueToPaste)) {
+    targetRange.setValues(valueToPaste.map(function(item) { return [item]; }));
+  } else {
+    targetRange.setValue(valueToPaste);
+  }
+}
+
+function EqualBranchAllocation(beginningRow, lastRow, allocationArray) {
+  var TPArray = [];
+  FillTPArray(2, 5, TPArray);
+  AllocationTP(TPArray, allocationArray, beginningRow, lastRow);
+}
+
+function FillTPArray(beginningRow, lastRow, geoArray) {
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  var rowNo = beginningRow;
+  var trackingPersonName = settingsSheet.getRange("E" + rowNo).getValue();
+  while (trackingPersonName !== "") {
+    geoArray.push(trackingPersonName);
+    rowNo++;
+    trackingPersonName = settingsSheet.getRange("E" + rowNo).getValue();
+  }
+}
+
+function AllocationTP(NWArray, trackingPersonArray, beginningRow, lastRow) {
+  var trackingDataSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var nwIndex = 0;
+  var nwSize = NWArray.length;
+
+  for (var rowNo = beginningRow; rowNo <= lastRow; rowNo++) {
+    if (trackingDataSheet.getRange("C" + rowNo).getValue() == "Dabaspete") {
+      trackingPersonArray.push("No Tracking");
+    } else {
+      trackingPersonArray.push(NWArray[nwIndex++]);
+      if (nwIndex == nwSize) {
+        nwIndex = 0; // reset index
+      }
+    }
+  }
+}
+
+function MoveValuesBetweenColumns(sheet) {
+  var sourceColArray = ['I', 'J', 'K', 'L', 'M', 'N', 'O'];
+  var destinationColArray = ['X', 'V', 'W', 'I', 'J', 'T', 'U'];
+  var lastRow = sheet.getLastRow();
+
+  for (var i = 0; i < sourceColArray.length; i++) {
+    var sourceCol = sourceColArray[i];
+    var destinationCol = destinationColArray[i];
+
+    var valuesToMove = sheet.getRange(sourceCol + '3:' + sourceCol + lastRow).getValues();
+
+    // Clear the values in the source column
+    sheet.getRange(sourceCol + '3:' + sourceCol + lastRow).clearContent();
+
+    // Set values to the destination column
+    sheet.getRange(destinationCol + '3:' + destinationCol + (3 + valuesToMove.length - 1)).setValues(valuesToMove);
+  }
+}
+
+function overwriteNamesBasedOnColumnV(sheet, beginningRow, lastRow, settingsSheet) {
+  var conditions = settingsSheet.getRange("F2:F").getValues().flat();
+  var names = settingsSheet.getRange("E11:E12").getValues().flat();
+  var nameIndex = 0; // To alternate between E11 and E12
+
+  for (var i = beginningRow; i <= lastRow; i++) {
+    var columnVValue = sheet.getRange("V" + i).getValue();
+
+    // Check if column V value matches any condition
+    if (conditions.includes(columnVValue)) {
+      sheet.getRange("A" + i).setValue(names[nameIndex % names.length]); // Overwrite with the corresponding name
+      nameIndex++;
+    }
+  }
+}

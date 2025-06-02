@@ -1,0 +1,150 @@
+function UpdateListingDateAndTrackingPerson() {
+
+  if (ListedDateCol ==null) {
+    AssignHeaderColumnNumbers()
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var today = new Date(); 
+  var beginningRow = findLastFilledCellInColumn(sheet, 2);
+  var lastRow = findLastFilledCellInColumn(sheet, 3);
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  var lookUpRange = "A2:B35";
+
+  if (beginningRow == lastRow) {
+      showMessageBoxOK("Nothing to Update", "All transactions are updated with names of the traffic team") ;
+      return;
+  }
+
+  beginningRow++;
+
+  // set New to column S
+  CopyToRange(sheet, "S", beginningRow,lastRow, "New");
+
+    // set Listing Date to column B
+  CopyToRange(sheet, "B", beginningRow,lastRow, today);
+
+    // set Tacker Name to column A
+  var sourceArray = [];
+  //for (var i = beginningRow; i < lastRow+1; i++) {
+  //    var branchName = sheet.getRange(i, BranchCol).getValue();
+  //    var trackingPersonName = customVLOOKUP(settingsSheet, branchName, lookUpRange, 2, true);
+  //    sourceArray.push([trackingPersonName]);
+  //  }
+
+  EqualBranchAllocation(beginningRow,lastRow,sourceArray);
+  CopyToRange(sheet, "A", beginningRow,lastRow, sourceArray);
+  UpdateFormula(sheet,beginningRow,lastRow);
+}
+
+function CopyToRange(actionSheet, columnName, beginningRow,lastRow, valueToPaste) {
+
+  var targetRange = actionSheet.getRange(columnName + beginningRow + ":" + columnName + lastRow).activate();
+  if (Array.isArray(valueToPaste)) {
+    targetRange.setValues(valueToPaste.map(function(item) { return [item]; }));
+  } else{
+     targetRange.setValue(valueToPaste);
+  }
+}
+
+function EqualBranchAllocation(beginningRow,lastRow,allocationArray){
+  var NWArray = [];
+  var SArray = [];
+//  var allocationArray =[];
+
+  FillTPArray(2,5, NWArray);
+  FillTPArray(13,13, SArray);
+  AllocationTP(NWArray,SArray, allocationArray, beginningRow,lastRow);
+  var x = 1;
+}
+
+
+function FillTPArray(beginningRow,lastRow, geoArray){
+
+  var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  var rowNo = beginningRow;
+  var trackingPersonName = settingsSheet.getRange("E"+rowNo).getValue();
+  while (trackingPersonName !== "") {
+    geoArray.push(trackingPersonName);
+    rowNo++;
+    trackingPersonName = settingsSheet.getRange("E"+rowNo).getValue();
+
+  }
+}
+
+function AllocationTP(NWArray,SArray, trackingPersonArray, beginningRow,lastRow){
+
+var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+
+var rowNo = 2;
+var nwIndex = 0;
+var sIndex = 0;
+var nwSize = NWArray.length;
+var sSize = SArray.length;
+
+var trackingDataSheetheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+//var beginningRow = findLastFilledCellInColumn(trackingDataSheetheet, 2)+1;
+//var lastRow = findLastFilledCellInColumn(trackingDataSheetheet, 3);
+var geoName = "";
+var branchName ="";
+//var trackingPersonName ="";
+var lookUpRange = "A2:E35";
+
+for(var rowNo = beginningRow; rowNo <lastRow+1; rowNo++ ){
+
+      branchName = trackingDataSheetheet.getRange("C"+rowNo).getValue();
+      geoName = customVLOOKUP(settingsSheet, branchName, lookUpRange, 4, true);
+
+//      if (geoName !== "South") {
+
+        if (geoName){
+          trackingPersonArray.push(NWArray[nwIndex++]);
+          if (nwIndex == nwSize){
+            nwIndex =0; // reset index
+          }
+      }    
+      else {
+          trackingPersonArray.push(SArray[sIndex++]);
+          if (sIndex == sSize){
+            sIndex =0; // reset index
+          }        
+      }
+}
+var y=1;
+}
+
+function UpdateFormula(sheet,beginningRow,lastRow){
+
+  var blankValue = "";
+  var normal = "Normal";
+  var delayobServered = "Delay Observed";
+  var runnignNormal = "Running Normal";
+  var newItem = "New";
+  var delayUnloading = "Delay in Unloading";
+  var loadingDelay = "Loading Delayed";
+  var columnD ="D";
+  
+  y = 1;
+
+  var delayInTransit =  "=if(isblank(P3), \"\", if(P3>E3, DATEDIF(P3,E3,\"D\"), \"Normal\"))" ;// col x
+
+   var delayObservered = "=if(isblank(E3),\"\",if(isblank(P3),if (today() > E3, \"Delay Observed\",\"Running Normal\"),\"\"))"; // col y
+  var delayInLoading = "=if((and(datedif(today(), B3,\"D\")>2, S3 = \"New\")), \"Loading Delay\", \"\")"; // col z
+  var delayInUnloading = "=if(and((Q3=\"\"),NOT(ISBLANK(P3)), datedif(today(),P3,\"D\")>2),\"Delay in Unloading\",\"\")"; // col aa
+
+  // set New to column X
+  CopyToRange(sheet, "X", beginningRow,lastRow, delayInTransit); 
+
+  // set New to column Y
+  CopyToRange(sheet, "Y", beginningRow,lastRow, delayObservered); 
+
+    // set New to column Z
+  CopyToRange(sheet, "Z", beginningRow,lastRow, delayInLoading); 
+
+    // set New to column AA
+  CopyToRange(sheet, "AA", beginningRow,lastRow, delayInUnloading); 
+
+}
+
+
+

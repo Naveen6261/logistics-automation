@@ -1,0 +1,142 @@
+function formatDateToStringOLD(date) {
+
+  var formattedDate = date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+
+  return formattedDate;
+}
+
+function formatDateToString(date) {
+
+  var formattedDate = Utilities.formatDate(date, "GMT", "dd-MM-yyyy");
+  return formattedDate;
+
+}
+
+function showMessageBoxOK(messageToShow) {
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert(messageToShow, ui.ButtonSet.OK);
+  return result;
+}
+
+function ShowMessageBoxOKAlert(titleToShow, messageToShow) {
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert(titleToShow & " " & messageToShow, ui.ButtonSet.OK);
+  return result;
+}
+
+function ShowMessageBoxYesNo(titleToShow, messageToShow) {
+  var ui = SpreadsheetApp.getUi();
+  if (ui.alert(titleToShow, messageToShow,ui.ButtonSet.YES_NO)== ui.Button.YES){
+      return true;
+  }
+  else{
+      return false;
+  }
+}
+
+function  customVLOOKUP(settingsSheet, searchKey, rangeAddress, columnIndex, exactMatch){
+
+  var range = settingsSheet.getRange(rangeAddress);
+  var values = range.getValues();
+  exactMatch = (exactMatch === undefined) ? true : exactMatch; 
+  
+  for (var i = 0; i < values.length; i++) {
+    if (exactMatch && values[i][0] === searchKey) {
+      return values[i][columnIndex - 1];
+    } else if (!exactMatch && values[i][0].toString().indexOf(searchKey.toString()) !== -1) {
+      return values[i][columnIndex - 1];
+    }
+  }
+  return "Not Found"; // Value not found
+}
+
+function findLastFilledCellInColumn(sheet, columnNumber) {
+
+  var columnData = sheet.getRange(1, columnNumber, sheet.getLastRow(), 1).getValues();
+  var lastFilledRow = columnData.reverse().findIndex(function(cellValue) {
+    return cellValue[0] !== "";
+  });
+  
+  if (lastFilledRow !== -1) {
+    lastFilledRow = sheet.getLastRow() - lastFilledRow;
+    return lastFilledRow;
+  } else{
+      return null;
+  }
+}
+
+function worksheetFunctionQuery(settingsSheet, queryRange, equateCol, selectCol, equateKey){
+
+  var formulaCell = settingsSheet.getRange('L2');
+  var queryFormula = "=QUERY(" + queryRange +", + \"SELECT " + selectCol + " WHERE " + equateCol + " = " + "'" + equateKey + "'" +" \" , 0)";
+
+  formulaCell.setFormula(queryFormula);
+  var formula = formulaCell.getValue();
+  if (formula && formula.charAt(0) === "#") {
+    formulaResult ="";
+  }
+  else {  
+     var formulaResult = formulaCell.getValue();
+     return formulaResult;
+      }
+} 
+
+function testWorkSheetFunction(){
+   var settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+   var queryRange = "E:F";
+   var equateCol = "E";
+   var selectCol = "F";
+   var equateKey = "Ajmat Shaikh";
+  
+  var result = worksheetFunctionQuery(settingsSheet, queryRange, equateCol, selectCol, equateKey);
+
+}
+
+function responseYesNoDialog(title, question) {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.alert( title,question,ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES){
+     return true;
+  }
+  else{
+     return false;
+  }
+}
+
+
+function goToRow() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var rowNo = sheet.getRange("I3").getValue();
+//  var rowNoString = sheet.getRange("H2").getValue();
+
+  //var rowNo = extractRowNumberFromString(rowNoString);
+  if ((rowNo == null)|| (rowNo ==0)){
+     showMessageBoxOK("Not a valid row to go");   
+    return;
+  }
+
+  var cell = sheet.getRange("A" + rowNo);
+  sheet.setActiveRange(cell);
+}
+
+
+function extractRowNumberFromString(inputString) {
+  var match = inputString.match(/Row No (\d+)/);
+  if (match && match[1]) {
+    return parseInt(match[1], 10);
+  } else {
+    return null; // or handle the case when the pattern is not found
+  }
+}
+
+function formatDate(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "dd-MMM-yyyy");
+}
+
+function formatTime(time) {
+  return Utilities.formatDate(time, Session.getScriptTimeZone(), "HH:mm");
+}

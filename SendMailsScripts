@@ -1,0 +1,23 @@
+function onEdit(e) {
+  console.log("Script executed"); // Add this line
+  const range = e.range;
+  const sheet = range.getSheet();
+  const targetSheetName = "GPS tracking";
+  
+  if (sheet.getName() === targetSheetName) {
+  const range = e.range;
+  const sheet = range.getSheet();
+  const targetSheetName = "GPS tracking";
+  
+  if (sheet.getName() === targetSheetName) {
+    const row = range.getRow();
+    const formattedTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm ");
+    const userEmail = Session.getActiveUser().getEmail();
+      
+    const dataRange = sheet.getRange(row, 47, 1, 2); // Range for setting both values at once
+    const newData = [[userEmail, formattedTime]];
+    dataRange.setValues(newData);
+  }
+}
+
+}
