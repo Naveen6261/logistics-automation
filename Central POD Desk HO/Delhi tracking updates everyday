@@ -1,0 +1,91 @@
+function sendDelhiTripTrackingEmail() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Delhi trips");
+  if (!sheet) throw new Error('Sheet "Delhi trips" not found.');
+
+  const now = new Date();
+  const hour = now.getHours();
+  const today = Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
+
+  if (hour < 10 || hour > 16) return;
+
+  const properties = PropertiesService.getScriptProperties();
+  const lastSentKey = `delhi_tracking_${today}_${hour}`;
+  const completedKey = `delhi_completed_${today}`;
+
+  if (properties.getProperty(lastSentKey) || properties.getProperty(completedKey)) return;
+
+  const dataRange = sheet.getRange("D2:G" + sheet.getLastRow());
+  const data = dataRange.getValues().filter(row => row.some(cell => cell));
+
+  const webhookUrl = "https://chat.googleapis.com/v1/spaces/AAAAehLC0Nc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=lne6Byyze8KYipuo5Zgo_t9MmJ-65RBHdPoZAjXCXLc";
+
+  if (data.length === 0) {
+    const subject = "All Delhi Trips Tracked for Today";
+    const body = "Dear Team,\n\nAll Delhi trip tracking has been completed for the day.\n\nThanks and regards,\nNaveen Kumar";
+
+    // Send to Gmail
+    GmailApp.createDraft("Tracking@lobb.in", subject, body, {
+      cc: "mylari.gupta@lobb.in"
+    });
+
+    // Send to Google Chat
+    sendToChatWebhook(webhookUrl, "*All Delhi trips are tracked for today.*");
+
+    properties.setProperty(completedKey, "true");
+    return;
+  }
+
+  const grouped = {};
+  data.forEach(([name, tripId, status, updated]) => {
+    if (!grouped[name]) grouped[name] = [];
+    grouped[name].push({ tripId, status, updated });
+  });
+
+  const summaryValues = sheet.getRange("A2:B9").getValues().filter(r => r[0]);
+  let summaryText = "🟡 *Pending Trips Summary:*\n";
+  summaryValues.forEach(([name, count]) => {
+    summaryText += `- ${name}: ${count} trips\n`;
+  });
+
+  let tripDetails = "";
+  for (const [user, trips] of Object.entries(grouped)) {
+    tripDetails += `\n*${user}*:\n`;
+    trips.forEach(t => {
+      const formattedDate = formatDateTime(t.updated);
+      tripDetails += `  - Trip ID: ${t.tripId}, Status: ${t.status}, Last Updated: ${formattedDate}\n`;
+    });
+  }
+
+  const subject = "Pending Delhi Trip Tracking Update";
+  const emailBody = `Dear Team,\n\n${summaryText}\nPlease track the following Delhi trips on priority:\n${tripDetails}\n\nThanks and regards,\nNaveen Kumar`;
+
+  GmailApp.createDraft("Tracking@lobb.in", subject, emailBody, {
+    cc: "mylari.gupta@lobb.in"
+  });
+
+  // Post to Google Chat
+  const chatMessage = `📢 *Delhi Trip Tracking Update*\n\n${summaryText}\nPlease check and track the trips on priority.`;
+  sendToChatWebhook(webhookUrl, chatMessage);
+
+  properties.setProperty(lastSentKey, "true");
+}
+
+function formatDateTime(date) {
+  if (!(date instanceof Date)) return date;
+  const tz = Session.getScriptTimeZone();
+  const d = Utilities.formatDate(date, tz, "dd/MM/yyyy");
+  const h = Utilities.formatDate(date, tz, "ha").toLowerCase().replace(":00", "");
+  return `${d} - ${h}`;
+}
+
+function sendToChatWebhook(url, message) {
+  const payload = JSON.stringify({ text: message });
+  const options = {
+    method: "POST",
+    contentType: "application/json",
+    payload: payload,
+    muteHttpExceptions: true
+  };
+  UrlFetchApp.fetch(url, options);
+}
