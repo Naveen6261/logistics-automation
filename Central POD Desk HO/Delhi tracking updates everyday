@@ -89,3 +89,24 @@ function sendToChatWebhook(url, message) {
   };
   UrlFetchApp.fetch(url, options);
 }
+
+function formatDateTime(date) {
+  if (!(date instanceof Date)) return date;
+
+  const tz = Session.getScriptTimeZone();
+  const d = Utilities.formatDate(date, tz, "dd/MM/yyyy");
+  const h = Utilities.formatDate(date, tz, "h:mma").toLowerCase().replace(":00", "");
+  return `${d} - ${h}`;
+}
+
+
+
+function resetDelhiTripEmailLock() {
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const properties = PropertiesService.getScriptProperties();
+  for (let h = 10; h <= 16; h++) {
+    properties.deleteProperty(`delhi_tracking_${today}_${h}`);
+  }
+  properties.deleteProperty(`delhi_completed_${today}`);
+  Logger.log("Email lock reset for today.");
+}
