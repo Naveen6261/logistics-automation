@@ -1,0 +1,134 @@
+function sendDelhiTripTrackingEmail() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Delhi trips");
+  if (!sheet) throw new Error('Sheet "Delhi trips" not found.');
+
+  const now = new Date();
+  const hour = now.getHours();
+  const today = Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
+
+  if (hour < 10 || hour > 16) return;
+
+  const properties = PropertiesService.getScriptProperties();
+  const lastSentKey = `delhi_tracking_${today}_${hour}`;
+  const completedKey = `delhi_completed_${today}`;
+  if (properties.getProperty(lastSentKey) || properties.getProperty(completedKey)) return;
+
+  const dataRange = sheet.getRange("D2:G" + sheet.getLastRow());
+  const data = dataRange.getValues().filter(row => row.some(cell => cell));
+
+  // Webhooks
+  const webhookUrls = [
+    "https://chat.googleapis.com/v1/spaces/AAAAehLC0Nc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=lne6Byyze8KYipuo5Zgo_t9MmJ-65RBHdPoZAjXCXLc",
+    "https://chat.googleapis.com/v1/spaces/AAQA361nlwc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=iX7lzQbTPs4QsWPoewJCWxtaY5uD4N0PlBlOKfRsdhI"
+  ];
+
+  // If all trips are tracked
+  if (data.length === 0) {
+    const subject = "✅ All Delhi Trips Tracked for Today";
+    const body = `
+      <p>Dear Team,</p>
+      <p><b style="color:green;">All Delhi trip tracking has been completed for the day.</b></p>
+      <p>Thanks and regards,<br><b>Naveen Kumar</b></p>
+    `;
+
+    GmailApp.createDraft("Tracking@lobb.in", subject, "", {
+      cc: "mylari.gupta@lobb.in",
+      htmlBody: body
+    });
+
+    sendToChatWebhook(webhookUrls, "✅ *All Delhi trips are tracked for today.*");
+    properties.setProperty(completedKey, "true");
+    return;
+  }
+
+  // Grouping trip data
+  const grouped = {};
+  data.forEach(([name, tripId, status, updated]) => {
+    if (!grouped[name]) grouped[name] = [];
+    grouped[name].push({ tripId, status, updated });
+  });
+
+  // Summary section
+  const summaryValues = sheet.getRange("A2:B9").getValues().filter(r => r[0]);
+  let summaryHTML = `<div style="background:#e8f4ff;padding:10px;border-radius:8px;"><b>🔄 Pending Trips Summary:</b><ul>`;
+  summaryValues.forEach(([name, count]) => {
+    summaryHTML += `<li><b>${name}</b>: ${count} trips</li>`;
+  });
+  summaryHTML += `</ul></div><br>`;
+
+  // Trip details section
+  let tripDetailsHTML = `<div style="background:#f9f9f9;padding:10px;border-radius:8px;"><b>➤ Trip Details:</b>`;
+  for (const [user, trips] of Object.entries(grouped)) {
+    tripDetailsHTML += `<p><b>${user}</b><ul>`;
+    trips.forEach(t => {
+      const formattedDate = formatDateTime(t.updated);
+      tripDetailsHTML += `<li>Trip ID: <b>${t.tripId}</b>, Status: ${t.status}, Last Updated: ${formattedDate}</li>`;
+    });
+    tripDetailsHTML += `</ul></p>`;
+  }
+  tripDetailsHTML += `</div>`;
+
+  // Email construction
+  const subject = "📋 Delhi Trip Tracking Update";
+  const emailBody = `
+    <p>Dear Team,</p>
+    ${summaryHTML}
+    <p>Please track the following Delhi trips on priority:</p>
+    ${tripDetailsHTML}
+    <br>
+    <p>Thanks and regards,<br><b>Naveen Kumar</b></p>
+  `;
+
+  GmailApp.createDraft("Tracking@lobb.in", subject, "", {
+    cc: "mylari.gupta@lobb.in",
+    htmlBody: emailBody
+  });
+
+  // Google Chat message
+  let chatMessage = `📢 *Delhi Trip Tracking Update*\n\n*🔄 Summary:*\n`;
+  summaryValues.forEach(([name, count]) => {
+    chatMessage += `- ${name}: ${count} trips\n`;
+  });
+
+  chatMessage += `\n*📝 Trip Details:*\n`;
+  for (const [user, trips] of Object.entries(grouped)) {
+    chatMessage += `\n*${user}*:\n`;
+    trips.forEach(t => {
+      const formattedDate = formatDateTime(t.updated);
+      chatMessage += `• Trip ID: ${t.tripId}, Status: ${t.status}, Last Updated: ${formattedDate}\n`;
+    });
+  }
+
+  sendToChatWebhook(webhookUrls, chatMessage);
+  properties.setProperty(lastSentKey, "true");
+}
+
+function formatDateTime(date) {
+  if (!(date instanceof Date)) return date;
+  const tz = Session.getScriptTimeZone();
+  const d = Utilities.formatDate(date, tz, "dd/MM/yyyy");
+  const h = Utilities.formatDate(date, tz, "h:mma").toLowerCase().replace(":00", "");
+  return `${d} - ${h}`;
+}
+
+function sendToChatWebhook(urls, message) {
+  const urlList = Array.isArray(urls) ? urls : [urls];
+  const payload = JSON.stringify({ text: message });
+  const options = {
+    method: "POST",
+    contentType: "application/json",
+    payload: payload,
+    muteHttpExceptions: true
+  };
+
+  for (const url of urlList) {
+    if (!url) continue;
+    try {
+      const response = UrlFetchApp.fetch(url, options);
+      Logger.log("✅ Webhook response: " + response.getContentText());
+    } catch (e) {
+      Logger.log("❌ Failed to send to webhook: " + e.toString());
+    }
+  }
+}
