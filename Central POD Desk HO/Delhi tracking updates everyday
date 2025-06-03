@@ -110,3 +110,51 @@ function resetDelhiTripEmailLock() {
   properties.deleteProperty(`delhi_completed_${today}`);
   Logger.log("Email lock reset for today.");
 }
+
+function createMatchesAndDraftEmails() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = ss.getSheetByName("tracking data");
+  const matchesSheet = ss.getSheetByName("matches") || ss.insertSheet("matches");
+
+  if (!sourceSheet) {
+    throw new Error('Sheet named "tracking data" not found.');
+  }
+
+  const data = sourceSheet.getRange("A7:F" + sourceSheet.getLastRow()).getValues();
+
+  const userDataMap = {};
+
+  // Build map: name -> list of their data items from column F
+  data.forEach(([name, , , , , info]) => {
+    if (name && info) {
+      if (!userDataMap[name]) userDataMap[name] = [];
+      userDataMap[name].push(info);
+    }
+  });
+
+  // Clear existing data in Column Z of matches sheet
+  const zLastRow = matchesSheet.getLastRow();
+  if (zLastRow > 1) {
+    matchesSheet.getRange("Z2:Z" + zLastRow).clearContent();
+  }
+  matchesSheet.getRange("Z1").setValue("Random Matches");
+
+  let rowCounter = 2;
+  for (const [name, infos] of Object.entries(userDataMap)) {
+    const picked = pickRandom(infos, 2);
+    const matchText = `Name: ${name} | Data: ${picked.join(", ")}`;
+    matchesSheet.getRange("Z" + rowCounter++).setValue(matchText);
+
+    // Construct the email
+    const subject = `Trip Tracking Request for ${name}`;
+    const body = `Dear Team,\n\nPlease track this trip on priority and update.\n\nData: ${picked.join(", ")}\n\nThanks and regards,\nNaveen Kumar`;
+
+    GmailApp.createDraft("", subject, body); // Add recipient if needed
+  }
+}
+
+// Helper function to pick N random items
+function pickRandom(arr, n) {
+  const shuffled = arr.slice().sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, Math.min(n, shuffled.length));
+}
