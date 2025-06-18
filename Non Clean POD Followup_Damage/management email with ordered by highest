@@ -1,0 +1,193 @@
+function draftNonCleanPODSummaryEmail() {
+  //populateDetailsForBranch();  // Ensure latest data
+  runtest();  // Ensure latest data
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ageSheet = ss.getSheetByName("Age_Bucket_Branch_Wise");
+  const detailsSheet = ss.getSheetByName("details for branch");
+
+  const emailTo = "naveen@lobb.in";
+  const ccTo = "naveenkumar.m@lobb.com";
+  const subject = `Summary Non-clean POD's as on ${Utilities.formatDate(new Date(), "GMT+5:30", "dd-MMMM-yyyy")}`;
+
+  // Get pivot data from Age_Bucket_Branch_Wise A26:G47
+  const pivotData = ageSheet.getRange("A26:G47").getDisplayValues();
+  const htmlTable = buildColoredPivotHtmlTable(pivotData);
+
+  // Filter 'details for branch' where col H is "Above 45 Days" or "21-45 Days"
+  const allData = detailsSheet.getDataRange().getValues();
+  const headers = allData[0];
+  const filtered = allData.filter((r, i) => i > 0 && (r[7] === "Above 45 Days" || r[7] === "21-45 Days"));
+
+  // Top 5 Transporters by Pending Amount (col F and col I)
+  const transporterMap = {};
+  filtered.forEach(row => {
+    const transporter = row[5];
+    const pending = parseFloat(row[8]) || 0;
+    transporterMap[transporter] = (transporterMap[transporter] || 0) + pending;
+  });
+  const topTransporters = Object.entries(transporterMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // Branch-wise total summary
+  const branchMap = {};
+  filtered.forEach(row => {
+    const branch = row[2];
+    const pending = parseFloat(row[8]) || 0;
+    branchMap[branch] = (branchMap[branch] || 0) + pending;
+  });
+
+  // Create temp spreadsheet
+  const tempSpreadsheet = SpreadsheetApp.create("Temp_Report_NonCleanPOD_" + new Date().getTime());
+  const tempSheet = tempSpreadsheet.getActiveSheet();
+  // Clean 'Pending Amount' column (col 9 / I)
+  // Clean 'Pending Amount' column (col 9 / I) and copy data safely
+  const cleanedData = filtered.map(row => {
+  const newRow = [...row]; // Copy the row to avoid mutating original
+  const amt = parseFloat((newRow[8] || '').toString().replace(/[^0-9.-]/g, ''));
+  newRow[8] = isNaN(amt) ? 0 : amt;
+  return newRow;
+});
+
+// Write data with headers
+tempSheet.getRange(1, 1, cleanedData.length + 1, headers.length).setValues([headers, ...cleanedData]);
+
+
+  // Create pivot: Row = Branch (col C), Column = Bucket (col H), Values = Count TXN Num (col B), Sum Pending Amt (col I)
+  const pivotSheet = tempSpreadsheet.insertSheet("Pivot");
+  const dataRange = tempSheet.getDataRange();
+  const pivotTable = pivotSheet.getRange('A1').createPivotTable(dataRange);
+  pivotTable.addRowGroup(3);    // Branch
+  pivotTable.addColumnGroup(8); // Bucket
+  pivotTable.addPivotValue(2, SpreadsheetApp.PivotTableSummarizeFunction.COUNTA); // TXN Num count
+  pivotTable.addPivotValue(9, SpreadsheetApp.PivotTableSummarizeFunction.SUM);    // Pending Amount sum
+
+  // Export Excel
+  const fileId = tempSpreadsheet.getId();
+  const xlsxBlob = exportSpreadsheetToXLSX(fileId, "Non_Clean_POD_Report.xlsx");
+
+  // Export PDF of pivot table A26:G47
+  const pdfBlob = exportRangeAsPDF(ageSheet, "A26:G47", "Non_Clean_POD_Pivot.pdf");
+  // Truck Ordered By highest pending amount
+  const orderedByMap = {};
+  filtered.forEach(row => {
+  const orderedBy = row[0]; // Column A
+  const pending = parseFloat(row[8]) || 0; // Column I
+  orderedByMap[orderedBy] = (orderedByMap[orderedBy] || 0) + pending;
+  });
+  const topOrderedBy = Object.entries(orderedByMap)
+  .sort((a, b) => b[1] - a[1])[0]; // Take the highest only
+
+  // Build email body
+  let body = `
+    <p>Dear Sir,</p>
+    <p>Please find below the Non clean POD trip and revenue details.</p>
+    ${htmlTable}
+    <p><b>Top 5 Transporters with Highest Pending Amounts:</b><br><ul>
+      ${topTransporters.map(([name, amount]) => `<li>${name}: ₹ ${amount.toLocaleString()}</li>`).join('')}
+    </ul></p>
+    <p><b>Top 10 "Truck Ordered By" with Highest Pending Amounts:</b><br><ul>
+    ${Object.entries(orderedByMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([party, amt]) => `<li>${party}: ₹ ${amt.toLocaleString()}</li>`)
+    .join('')}
+    </ul></p>
+
+
+    <p>Regards,<br>Non clean POD followup Team <br>LOBB HO Bengaluru </p>
+  `;
+ //<p><b>Branch Wise Pending Amount Summary:</b><br><ul>
+  //    ${Object.entries(branchMap).map(([branch, amt]) => `<li>${branch}: ₹ ${amt.toLocaleString()}</li>`).join('')}    </ul></p>
+
+  GmailApp.createDraft(emailTo, subject, '', {
+    htmlBody: body,
+    cc: ccTo,
+    attachments: [xlsxBlob, pdfBlob]
+  });
+
+  DriveApp.getFileById(fileId).setTrashed(true);
+  Logger.log("Email draft created.");
+}
+
+// ---------- HTML Pivot with Color Groups ----------
+function buildColoredPivotHtmlTable(data) {
+  const tripsCols = [1, 3, 5]; // B, D, F
+  const moneyCols = [2, 4, 6]; // C, E, G
+
+  function getMinMax(cols) {
+    return cols.map(c => {
+      const values = data.slice(0, -1).map(r => {
+        const v = parseFloat(r[c].toString().replace(/[^0-9.-]/g, ""));
+        return isNaN(v) ? null : v;
+      }).filter(v => v !== null);
+      return { min: Math.min(...values), max: Math.max(...values) };
+    });
+  }
+
+  const tripMinMax = getMinMax(tripsCols);
+  const moneyMinMax = getMinMax(moneyCols);
+
+  function getColor(value, min, max, light, dark) {
+    if (min === max) return light;
+    let ratio = (value - min) / (max - min);
+    let r = Math.round(light[0] + ratio * (dark[0] - light[0]));
+    let g = Math.round(light[1] + ratio * (dark[1] - light[1]));
+    let b = Math.round(light[2] + ratio * (dark[2] - light[2]));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const tripColors = [[255, 242, 204], [255, 217, 102]];
+  const moneyColors = [[219, 229, 241], [91, 155, 213]];
+
+  let html = '<table border="1" style="border-collapse:collapse;font-family:Arial;">';
+  data.forEach((row, rIdx) => {
+    html += '<tr>';
+    row.forEach((cell, cIdx) => {
+      let bg = "";
+      if (rIdx < data.length - 1) {
+        if (tripsCols.includes(cIdx)) {
+          let val = parseFloat(cell.toString().replace(/[^0-9.-]/g, ""));
+          if (!isNaN(val)) {
+            let idx = tripsCols.indexOf(cIdx);
+            bg = getColor(val, tripMinMax[idx].min, tripMinMax[idx].max, ...tripColors);
+          }
+        }
+        if (moneyCols.includes(cIdx)) {
+          let val = parseFloat(cell.toString().replace(/[^0-9.-]/g, ""));
+          if (!isNaN(val)) {
+            let idx = moneyCols.indexOf(cIdx);
+            bg = getColor(val, moneyMinMax[idx].min, moneyMinMax[idx].max, ...moneyColors);
+          }
+        }
+      }
+      html += `<td style="padding:4px; background-color:${bg}">${cell}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+// ---------- Export to XLSX ----------
+function exportSpreadsheetToXLSX(fileId, exportName) {
+  const url = `https://docs.google.com/feeds/download/spreadsheets/Export?key=${fileId}&exportFormat=xlsx`;
+  const token = ScriptApp.getOAuthToken();
+  const response = UrlFetchApp.fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + token },
+    muteHttpExceptions: true,
+  });
+  return response.getBlob().setName(exportName);
+}
+
+// ---------- Export Pivot PDF ----------
+function exportRangeAsPDF(sheet, rangeA1, fileName) {
+  const ss = sheet.getParent();
+  const sheetId = sheet.getSheetId();
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${ss.getId()}/export?format=pdf&size=A4&portrait=false&fitw=true&top_margin=0.5&bottom_margin=0.5&left_margin=0.5&right_margin=0.5&sheetnames=false&printtitle=false&pagenumbers=false&gridlines=false&fzr=false&gid=${sheetId}&range=${rangeA1}`;
+  const token = ScriptApp.getOAuthToken();
+  const response = UrlFetchApp.fetch(exportUrl, {
+    headers: { 'Authorization': 'Bearer ' + token },
+  });
+  return response.getBlob().setName(fileName);
+}
