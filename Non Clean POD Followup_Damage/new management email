@@ -1,0 +1,44 @@
+function buildPivotHtmlTable(pivotData) {
+  const tripsCols = [1, 3, 5]; // B, D, F zero-based indices
+  // Calculate min/max for each trips column (excluding headers and totals)
+  let minMax = tripsCols.map(c => {
+    let vals = pivotData.slice(4, -1).map(r => {
+      const v = parseFloat(r[c]);
+      return isNaN(v) ? null : v;
+    }).filter(v => v !== null);
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  });
+
+  function getColorForValue(value, min, max) {
+    if (min === max) {
+      return '#fff2cc'; // medium yellow for equal values
+    }
+    const light = { r: 255, g: 242, b: 204 };
+    const dark = { r: 255, g: 217, b: 102 };
+    let ratio = (value - min) / (max - min);
+    const r = Math.round(light.r + ratio * (dark.r - light.r));
+    const g = Math.round(light.g + ratio * (dark.g - light.g));
+    const b = Math.round(light.b + ratio * (dark.b - light.b));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  let htmlTable = '<table border="1" style="border-collapse:collapse; font-family: Arial;">';
+  pivotData.forEach((row, r) => {
+    htmlTable += "<tr>";
+    row.forEach((cell, c) => {
+      let bgColor = "";
+      if (r >= 4 && r < pivotData.length - 1 && tripsCols.includes(c)) { 
+        // only trips cols, skip headers (first 4 rows) and total (last row)
+        let val = parseFloat(cell);
+        if (!isNaN(val)) {
+          const idx = tripsCols.indexOf(c);
+          bgColor = getColorForValue(val, minMax[idx].min, minMax[idx].max);
+        }
+      }
+      htmlTable += `<td style="padding:4px; background-color:${bgColor}">${cell}</td>`;
+    });
+    htmlTable += "</tr>";
+  });
+  htmlTable += "</table>";
+  return htmlTable;
+}
