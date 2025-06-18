@@ -41,12 +41,17 @@ function draftNonCleanPODSummaryEmail() {
   const tempSpreadsheet = SpreadsheetApp.create("Temp_Report_NonCleanPOD_" + new Date().getTime());
   const tempSheet = tempSpreadsheet.getActiveSheet();
   // Clean 'Pending Amount' column (col 9 / I)
-   for (let i = 1; i < filtered.length; i++) {
-  const amt = parseFloat(filtered[i][8].toString().replace(/[^0-9.-]/g, ''));
-  filtered[i][8] = isNaN(amt) ? 0 : amt;
-  }
+  // Clean 'Pending Amount' column (col 9 / I) and copy data safely
+  const cleanedData = filtered.map(row => {
+  const newRow = [...row]; // Copy the row to avoid mutating original
+  const amt = parseFloat((newRow[8] || '').toString().replace(/[^0-9.-]/g, ''));
+  newRow[8] = isNaN(amt) ? 0 : amt;
+  return newRow;
+});
 
-  tempSheet.getRange(1, 1, filtered.length + 1, headers.length).setValues([headers, ...filtered]);
+// Write data with headers
+tempSheet.getRange(1, 1, cleanedData.length + 1, headers.length).setValues([headers, ...cleanedData]);
+
 
   // Create pivot: Row = Branch (col C), Column = Bucket (col H), Values = Count TXN Num (col B), Sum Pending Amt (col I)
   const pivotSheet = tempSpreadsheet.insertSheet("Pivot");
@@ -63,6 +68,15 @@ function draftNonCleanPODSummaryEmail() {
 
   // Export PDF of pivot table A26:G47
   const pdfBlob = exportRangeAsPDF(ageSheet, "A26:G47", "Non_Clean_POD_Pivot.pdf");
+  // Truck Ordered By highest pending amount
+  const orderedByMap = {};
+  filtered.forEach(row => {
+  const orderedBy = row[0]; // Column A
+  const pending = parseFloat(row[8]) || 0; // Column I
+  orderedByMap[orderedBy] = (orderedByMap[orderedBy] || 0) + pending;
+  });
+  const topOrderedBy = Object.entries(orderedByMap)
+  .sort((a, b) => b[1] - a[1])[0]; // Take the highest only
 
   // Build email body
   let body = `
@@ -72,11 +86,23 @@ function draftNonCleanPODSummaryEmail() {
     <p><b>Top 5 Transporters with Highest Pending Amounts:</b><br><ul>
       ${topTransporters.map(([name, amount]) => `<li>${name}: ₹ ${amount.toLocaleString()}</li>`).join('')}
     </ul></p>
-    <p><b>Branch Wise Pending Amount Summary:</b><br><ul>
-      ${Object.entries(branchMap).map(([branch, amt]) => `<li>${branch}: ₹ ${amt.toLocaleString()}</li>`).join('')}
-    </ul></p>
-    <p>Regards,<br>Followup Non Clean POD /n </p>
+   
+
+    <p>Regards,<br>Non clean POD followup Team <br>LOBB HO Bengaluru </p>
   `;
+  // for branch names with amount penidng
+ //<p><b>Branch Wise Pending Amount Summary:</b><br><ul>
+  //    ${Object.entries(branchMap).map(([branch, amt]) => `<li>${branch}: ₹ ${amt.toLocaleString()}</li>`).join('')}    </ul></p>
+                //for the traffic personwise highest pending
+                // <p><b>Top 10 "Truck Ordered By" with Highest Pending Amounts:</b><br><ul>
+                //${Object.entries(orderedByMap)
+                //.sort((a, b) => b[1] - a[1])
+                //.slice(0, 10)
+                //.map(([party, amt]) => `<li>${party}: ₹ ${amt.toLocaleString()}</li>`)
+                // .join('')}
+                // </ul></p>
+
+
 
   GmailApp.createDraft(emailTo, subject, '', {
     htmlBody: body,
