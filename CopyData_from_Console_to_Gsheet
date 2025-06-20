@@ -1,6 +1,6 @@
 function createTrackingEmailAndLog() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi(); // ✅ Added UI instance
+  const ui = SpreadsheetApp.getUi();
   const emailSheet = ss.getSheetByName("email") || ss.insertSheet("email");
   const settingsSheet = ss.getSheetByName("settings");
   const activeSheet = ss.getActiveSheet();
@@ -10,12 +10,31 @@ function createTrackingEmailAndLog() {
   const activeRow = activeCell.getRow();
   const data = activeSheet.getRange(1, activeCol, 30, 1).getValues().flat();
 
-  const status = (data[5] || "").toString().toLowerCase(); // Row 6 (index 5)
-  const subStatus = (data[6] || "").toString().trim().toLowerCase(); // Row 7 (index 6)
+  const subjectRaw = (data[2] || "").toString().trim(); // Row 3
+  const tripMatch = subjectRaw.match(/tracking\s*[-(]?\s*(\d+)/i);
+  const tripNumber = tripMatch ? tripMatch[1] : "Unknown";
 
-  // ❗ Check: If NOT in transit AND Sub Status is blank or "none"
-  if (status !== "in transit" && (!subStatus || subStatus === "none")) {
-    ui.alert("Sub status required to draft the email.");
+  const previousMessage = activeSheet.getRange(3, activeCol).getValue().toString().trim();
+  if (
+    previousMessage.startsWith("Trip") &&
+    (previousMessage.includes("Email not drafted") || previousMessage.includes("Sub status required"))
+  ) {
+    ui.alert(`Previous error found: "${previousMessage}".\nPlease fix the issue before drafting again.`);
+    return;
+  }
+
+  const status = (data[5] || "").toString().trim();     // Row 6
+  const subStatus = (data[6] || "").toString().trim();  // Row 7
+
+  function notifyUserAndLog(message) {
+    const fullMessage = `Trip ${tripNumber} - ${message}`;
+    ui.alert(fullMessage);
+    activeSheet.getRange(3, activeCol).setValue(fullMessage);
+  }
+
+  // ❗ Block if NOT inTransit AND Sub Status is "None"
+  if (status !== " inTransit" && subStatus.toLowerCase() === "none") {
+    notifyUserAndLog("Email not drafted for the reason: Sub status required.");
     return;
   }
 
@@ -24,9 +43,7 @@ function createTrackingEmailAndLog() {
   const branchRaw = data[25] || "";
   const branchName = branchRaw.includes(":") ? branchRaw.split(":").slice(1).join(":").trim() : branchRaw.trim();
 
-  const rawSubject = (data[2] || "").toString().trim();
-  const formattedSubject = rawSubject.replace(/Tracking\s*-\s*(\d+)/i, (_, num) => `Tracking (${num})`);
-
+  const formattedSubject = subjectRaw.replace(/Tracking\s*-\s*(\d+)/i, (_, num) => `Tracking (${num})`);
   if (/completed/i.test(formattedSubject)) {
     Logger.log("Subject contains 'completed'. Email draft skipped.");
     return;
@@ -101,7 +118,7 @@ function createTrackingEmailAndLog() {
                 commentsHtml = `<i>Invalid comment format</i>`;
               }
             } catch (e) {
-              commentsHtml = `<i>  </i>`;
+              commentsHtml = `<i>Unable to parse comments</i>`;
               hasParseError = true;
             }
 
@@ -128,7 +145,7 @@ function createTrackingEmailAndLog() {
     </div>`;
 
   if (hasParseError) {
-    ui.alert("Email not drafted - Please add comments and draft the email.");
+    notifyUserAndLog("Email not drafted - Please add comments and draft the email.");
     return;
   }
 
