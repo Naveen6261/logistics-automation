@@ -1,5 +1,6 @@
 function createTrackingEmailAndLog() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi(); // ✅ Added UI instance
   const emailSheet = ss.getSheetByName("email") || ss.insertSheet("email");
   const settingsSheet = ss.getSheetByName("settings");
   const activeSheet = ss.getActiveSheet();
@@ -8,6 +9,15 @@ function createTrackingEmailAndLog() {
   const activeCol = activeCell.getColumn();
   const activeRow = activeCell.getRow();
   const data = activeSheet.getRange(1, activeCol, 30, 1).getValues().flat();
+
+  const status = (data[5] || "").toString().toLowerCase(); // Row 6 (index 5)
+  const subStatus = (data[6] || "").toString().trim().toLowerCase(); // Row 7 (index 6)
+
+  // ❗ Check: If NOT in transit AND Sub Status is blank or "none"
+  if (status !== "in transit" && (!subStatus || subStatus === "none")) {
+    ui.alert("Sub status required to draft the email.");
+    return;
+  }
 
   const toEmails = [extractValidEmail(data[21]), extractValidEmail(data[24])].filter(Boolean).join(",");
 
@@ -27,7 +37,6 @@ function createTrackingEmailAndLog() {
   const dateOnly = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
 
   const colZCell = activeSheet.getRange(activeRow, 26); // Column Z
-
   const tempMarker = `Processing by ${user} at ${timestamp}`;
   colZCell.setValue(tempMarker);
 
@@ -59,13 +68,13 @@ function createTrackingEmailAndLog() {
 
   ccEmails.push(
     "naveenkumar.m@lobb.in",
-    "mylari.gupta@lobb.in",
-   // "alfiz.sha@lobb.in",
-   // "riyaz.blr@lobb.in"
+    "mylari.gupta@lobb.in"
   );
   ccEmails = [...new Set(ccEmails.filter(Boolean))];
 
   const bodyIndexes = [7, 13, 14, 17, 11, 18, 15, 16, 11, 19, 5, 8, 27];
+  let hasParseError = false;
+
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
       <p>Dear Branch team,</p>
@@ -84,16 +93,16 @@ function createTrackingEmailAndLog() {
               if (Array.isArray(comments)) {
                 commentsHtml = comments.map(c => `
                   <div style="margin-bottom: 8px;">
-                    <strong>${c.commented_by_name}</strong> 
+                    <strong>${c.commented_by_name}</strong>
                     <span style="color: #777; font-size: 12px;">(${c.created_at})</span><br>
                     <span style="white-space: pre-line;">${c.comment}</span>
-                  </div>
-                `).join("");
+                  </div>`).join("");
               } else {
                 commentsHtml = `<i>Invalid comment format</i>`;
               }
             } catch (e) {
-              commentsHtml = `<i>Unable to parse comments</i>`;
+              commentsHtml = `<i>  </i>`;
+              hasParseError = true;
             }
 
             return `
@@ -116,8 +125,12 @@ function createTrackingEmailAndLog() {
       <p>Provide needed information and/or take suitable action at your side.</p>
       <p>This is a manually triggered email.<br>
       For ready reference refer <a href="https://pipe.lobb.in/dashboard/locationAndConsent" target="_blank">lobb pipe link</a>.</p>
-    </div>
-  `;
+    </div>`;
+
+  if (hasParseError) {
+    ui.alert("Email not drafted - Please add comments and draft the email.");
+    return;
+  }
 
   GmailApp.createDraft(toEmails, formattedSubject, "", {
     htmlBody,
