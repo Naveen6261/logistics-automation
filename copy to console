@@ -1,0 +1,250 @@
+/**
+ * Main function to create tracking email and log details
+ */
+function createTrackingEmailAndLog() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const emailSheet = ss.getSheetByName("email") || ss.insertSheet("email");
+  const settingsSheet = ss.getSheetByName("settings");
+  const errorSheet = ss.getSheetByName("email error logs");
+  const activeSheet = ss.getActiveSheet();
+
+  const activeCell = activeSheet.getActiveCell();
+  const activeCol = activeCell.getColumn();
+  const activeRow = activeCell.getRow();
+  const data = activeSheet.getRange(1, activeCol, 30, 1).getValues().flat();
+
+  const subjectRaw = (data[2] || "").toString().trim(); // Row 3
+  const tripMatch = subjectRaw.match(/tracking\s*[-(]?\s*(\d+)/i);
+  const tripNumber = tripMatch ? tripMatch[1] : "Unknown";
+
+  const previousMessage = activeSheet.getRange(3, activeCol).getValue().toString().trim();
+  if (
+    previousMessage.startsWith("Trip") &&
+    (previousMessage.includes("Email not drafted") || previousMessage.includes("Sub status required"))
+  ) {
+    notifyUserAndLog("Previous error found: \"" + previousMessage + "\".\nPlease fix the issue before drafting again.");
+    return;
+  }
+
+  const status = (data[5] || "").toString().trim();     // Row 6
+  const subStatus = (data[6] || "").toString().trim();  // Row 7
+
+  if (status !== " inTransit" && subStatus.toLowerCase() === "none") {
+    notifyUserAndLog("Email not drafted for the reason: Sub status required.");
+    return;
+  }
+
+  const formattedSubject = subjectRaw.replace(/Tracking\s*-\s*(\d+)/i, (_, num) => `Tracking (${num})`);
+  if (/completed/i.test(formattedSubject)) {
+    const user = Session.getActiveUser().getEmail() || "Unknown";
+    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const message = `User ${user} attempted to draft a tracking email for a completed trip.\n\nSubject: ${formattedSubject}\nTime: ${timestamp}`;
+    GmailApp.sendEmail("naveenkumar.m@lobb.in", "Alert: Email draft attempt on completed trip", message);
+    notifyUserAndLog("Trip is already completed. Email cannot be drafted.");
+    return;
+  }
+
+  const user = Session.getActiveUser().getEmail() || "Unknown";
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const dateOnly = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+
+  const colZCell = activeSheet.getRange(activeRow, 26); // Column Z
+  const tempMarker = `Processing by ${user} at ${timestamp}`;
+  colZCell.setValue(tempMarker);
+
+  const props = PropertiesService.getScriptProperties();
+  let cachedSettings = props.getProperty("settingsData");
+  let settingsData;
+
+  if (cachedSettings) {
+    const cachedTime = new Date(props.getProperty("settingsTimestamp"));
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    if (cachedTime > oneDayAgo) {
+      settingsData = JSON.parse(cachedSettings);
+    }
+  }
+
+  if (!settingsData) {
+    settingsData = settingsSheet.getDataRange().getValues().map(r => [r[0], extractEmails(r[3]), extractEmails(r[7])]);
+    props.setProperty("settingsData", JSON.stringify(settingsData));
+    props.setProperty("settingsTimestamp", new Date().toISOString());
+  }
+
+  const branchRaw = data[25] || "";
+  const branchName = branchRaw.includes(":") ? branchRaw.split(":").slice(1).join(":").trim() : branchRaw.trim();
+
+  let ccEmails = [];
+  settingsData.forEach(row => {
+    if (String(row[0] || "").toLowerCase() === branchName.toLowerCase()) {
+      ccEmails.push(...row[1], ...row[2]);
+    }
+  });
+  ccEmails.push("naveenkumar.m@lobb.in", "mylari.gupta@lobb.in");
+  ccEmails = [...new Set(ccEmails.filter(Boolean))];
+
+  const toEmails = [extractEmail(data[21]), extractEmail(data[24])].filter(Boolean).join(",");
+
+  const approvedNames = [
+    "Nancy Sahu", "Preeti", "Sanno Gaur", "Pratibha",
+    "Abhishek Kumar Dwivedi", "Naveenkumar M", "Mylari Gupta",
+    ...settingsSheet.getRange("E21:E").getValues().flat().map(v => String(v).trim()).filter(Boolean)
+  ];
+
+  const bodyIndexes = [7, 13, 14, 17, 11, 18, 15, 16, 11, 19, 5, 8, 27];
+  let hasParseError = false;
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+      <p>Dear Branch team,</p>
+      <p><strong>Truck Details</strong></p>
+      <table style="border-collapse: collapse; width: 100%; max-width: 600px; margin-bottom: 16px;">
+        ${bodyIndexes.map(i => {
+          let raw = String(data[i] || "").trim().replace(/[\r\n]+/g, " ");
+          if (i === 27) {
+            let commentsHtml = "";
+            try {
+              if (raw.startsWith("Comments:")) raw = raw.substring("Comments:".length).trim();
+              const comments = JSON.parse(raw);
+              const filtered = comments.filter(c =>
+                approvedNames.some(name => name.toLowerCase() === String(c.commented_by_name || "").toLowerCase())
+              );
+              if (filtered.length === 0) {
+                notifyUserAndLog("Email not drafted - Please add comments and draft the email.");
+                hasParseError = true;
+                return "";
+              }
+              commentsHtml = filtered.map(c => `
+                <div style="margin-bottom: 8px;">
+                  <strong>${c.commented_by_name}</strong>
+                  <span style="color: #777; font-size: 12px;">(${c.created_at})</span><br>
+                  <span style="white-space: pre-line;">${c.comment}</span>
+                </div>`).join("");
+            } catch (e) {
+              notifyUserAndLog("Email not drafted - Invalid comment format.");
+              hasParseError = true;
+              return "";
+            }
+            return `
+              <tr>
+                <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold; background: #f5f5f5;">Comments</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${commentsHtml}</td>
+              </tr>`;
+          }
+          if (!raw.includes(":")) return "";
+          const [label, ...rest] = raw.split(":");
+          const value = rest.join(":" ).trim();
+          return `
+            <tr>
+              <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold; background: #f5f5f5;">${label.trim()}</td>
+              <td style="border: 1px solid #ccc; padding: 8px;">${value}</td>
+            </tr>`;
+        }).join("")}
+      </table>
+      <p>Provide needed information and/or take suitable action at your side.</p>
+      <p>This is a manually triggered email.<br>
+      For ready reference refer <a href="https://pipe.lobb.in/dashboard/locationAndConsent" target="_blank">lobb pipe link</a>.</p>
+    </div>`;
+
+  if (hasParseError) return;
+
+  GmailApp.createDraft(toEmails, formattedSubject, "", {
+    htmlBody,
+    cc: ccEmails.join(",")
+  });
+
+  const mapping = {
+    27: 1, 26: 3, 14: 4, 15: 5, 4: 6, 12: 7, 11: 8, 16: 9, 17: 10, 8: 11,
+    9: 12, 7: 66, 13: 24, 18: 23, 23: 20, 20: 21, 6: 30, 19: 58,
+    21: 59, 22: 60, 24: 61, 25: 62, 3: 63, 10: 65
+  };
+
+  const rowValues = new Array(70).fill("");
+  rowValues[1] = dateOnly;
+
+  for (const [srcRow, col] of Object.entries(mapping)) {
+    let val = data[srcRow - 1];
+    if (!val) continue;
+    val = val.includes(":") ? val.split(":").slice(1).join(":").trim() : val.toString().trim();
+    if (srcRow == 7) val = `(${val})`;
+    rowValues[col - 1] = val;
+  }
+
+  const val28 = data[27] || "";
+  const val7 = data[6] || "";
+  const combined = [val28, val7].map(v => v.includes(":") ? v.split(":").slice(1).join(":").trim() : v.trim()).filter(Boolean).join(" - ");
+  rowValues[12] = combined;
+
+  const runCountCell = activeSheet.getRange(activeRow, 27);
+  let runCount = Number(runCountCell.getValue()) || 0;
+  runCount += 1;
+  runCountCell.setValue(runCount);
+
+  const finalLog = `${user} ; ${timestamp} ; run #${runCount}`;
+  colZCell.setValue(finalLog);
+  rowValues[25] = finalLog;
+  rowValues[66] = `R${activeRow}C${activeCol}`;
+
+  emailSheet.appendRow(rowValues);
+
+  Logger.log(`Email drafted for: ${toEmails} | CC: ${ccEmails.join(", ")}`);
+}
+
+/**
+ * Extracts a single valid email from a text field (e.g., with label)
+ */
+function extractEmail(entry) {
+  const text = String(entry || "").trim();
+  const email = text.includes(":") ? text.split(":").slice(1).join(":").trim() : text;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+/**
+ * Extracts all valid emails from a semicolon-separated string
+ */
+function extractEmails(entry) {
+  const text = String(entry || "").trim();
+  return text.split(";").map(e => extractEmail(e)).filter(Boolean);
+}
+
+/**
+ * Alerts the user, logs in the sheet, sends email, and writes to 'email error logs'
+ */
+function notifyUserAndLog(message) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  const cell = sheet.getActiveCell();
+  const errorSheet = ss.getSheetByName("email error logs");
+
+  const tripNumber = (sheet.getRange(3, cell.getColumn()).getValue() || "Unknown Trip").toString();
+  const user = Session.getActiveUser().getEmail() || "Unknown User";
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const cellRef = `R${cell.getRow()}C${cell.getColumn()}`;
+  const subject = (sheet.getRange(3, cell.getColumn()).getValue() || "").toString().trim();
+
+  SpreadsheetApp.getUi().alert(`Trip ${tripNumber} - ${message}`);
+  sheet.getRange(3, cell.getColumn()).setValue(`Trip ${tripNumber} - ${message}`);
+
+  const emailBody = `
+A user attempted to run the email draft script but it failed.
+
+Trip Number: ${tripNumber}
+User: ${user}
+Timestamp: ${timestamp}
+Cell: ${cellRef}
+Subject: ${subject}
+Reason: ${message}
+  `;
+  GmailApp.sendEmail("naveenkumar.m@lobb.in", "Error: Email Draft Failed", emailBody);
+
+  if (errorSheet) {
+    errorSheet.appendRow([
+      timestamp,
+      user,
+      tripNumber,
+      subject,
+      cellRef,
+      message
+    ]);
+  }
+}
