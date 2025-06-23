@@ -1,29 +1,68 @@
 function createTrackingEmailAndLog() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
   const emailSheet = ss.getSheetByName("email") || ss.insertSheet("email");
   const settingsSheet = ss.getSheetByName("settings");
   const activeSheet = ss.getActiveSheet();
 
-  const data = activeSheet.getRange("A1:A30").getValues().flat();
+  const activeCell = activeSheet.getActiveCell();
+  const activeCol = activeCell.getColumn();
+  const activeRow = activeCell.getRow();
+  const data = activeSheet.getRange(1, activeCol, 30, 1).getValues().flat();
+
+  const subjectRaw = (data[2] || "").toString().trim();
+  const tripMatch = subjectRaw.match(/tracking\s*[-(]?\s*(\d+)/i);
+  const tripNumber = tripMatch ? tripMatch[1] : "Unknown";
+
+  const previousMessage = activeSheet.getRange(3, activeCol).getValue().toString().trim();
+  if (
+    previousMessage.startsWith("Trip") &&
+    (previousMessage.includes("Email not drafted") || previousMessage.includes("Sub status required"))
+  ) {
+    ui.alert(`Previous error found: "${previousMessage}".\nPlease fix the issue before drafting again.`);
+    return;
+  }
+
+  const status = (data[5] || "").toString().trim();     // Row 6
+  const subStatus = (data[6] || "").toString().trim();  // Row 7
+
+  function notifyUserAndLog(message) {
+    const fullMessage = `Trip ${tripNumber} - ${message}`;
+    ui.alert(fullMessage);
+    activeSheet.getRange(3, activeCol).setValue(fullMessage);
+  }
+
+  if (status !== " inTransit" && subStatus.toLowerCase() === "none") {
+    notifyUserAndLog("Email not drafted for the reason: Sub status required.");
+    return;
+  }
+
   const toEmails = [extractValidEmail(data[21]), extractValidEmail(data[24])].filter(Boolean).join(",");
 
-  const branchRaw = data[25] || ""; // Row 26 (index 25)
+  const branchRaw = data[25] || "";
   const branchName = branchRaw.includes(":") ? branchRaw.split(":").slice(1).join(":").trim() : branchRaw.trim();
 
-  const rawSubject = (data[2] || "").toString().trim();
-  const formattedSubject = rawSubject.replace(/Tracking\s*-\s*(\d+)/i, (_, num) => `Tracking (${num})`);
-
+  const formattedSubject = subjectRaw.replace(/Tracking\s*-\s*(\d+)/i, (_, num) => `Tracking (${num})`);
   if (/completed/i.test(formattedSubject)) {
     Logger.log("Subject contains 'completed'. Email draft skipped.");
     return;
   }
 
-  // Load cached settings or fetch fresh if older than 1 day
+  const user = Session.getActiveUser().getEmail() || "Unknown";
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const dateOnly = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+
+  const colZCell = activeSheet.getRange(activeRow, 26);
+  const tempMarker = `Processing by ${user} at ${timestamp}`;
+  colZCell.setValue(tempMarker);
+
   const props = PropertiesService.getScriptProperties();
   let cachedSettings = props.getProperty("settingsData");
   let settingsData;
 
-  if (cachedSettings) {
+  const forceRefresh = (settingsSheet.getRange("A38").getValue().toString().toUpperCase() === "REFRESH");
+
+  if (cachedSettings && !forceRefresh) {
     const cachedTime = new Date(props.getProperty("settingsTimestamp"));
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     if (cachedTime > oneDayAgo) {
@@ -32,35 +71,94 @@ function createTrackingEmailAndLog() {
   }
 
   if (!settingsData) {
-    settingsData = settingsSheet.getDataRange().getValues().map(r => [r[0], extractValidEmail(r[3]), extractValidEmail(r[7])]);
+    settingsData = settingsSheet.getDataRange().getValues().map(r => {
+      const branch = r[0];
+      const emailsD = extractMultipleEmails(r[3]); // Column D
+      const emailsH = extractMultipleEmails(r[7]); // Column H
+      return [branch, emailsD, emailsH];
+    });
     props.setProperty("settingsData", JSON.stringify(settingsData));
     props.setProperty("settingsTimestamp", new Date().toISOString());
+
+    // Clear refresh keyword
+    if (forceRefresh) settingsSheet.getRange("A38").setValue("");
   }
 
   let ccEmails = [];
   settingsData.forEach(row => {
-    if ((row[0] || "").toLowerCase() === branchName.toLowerCase()) {
-      if (row[1]) ccEmails.push(row[1]);
-      if (row[2]) ccEmails.push(row[2]);
+    if (String(row[0] || "").toLowerCase() === branchName.toLowerCase()) {
+      ccEmails.push(...row[1], ...row[2]); // add all from D and H
     }
   });
 
-  // Fixed CCs
-  ccEmails.push(
-    "naveenkumar.m@lobb.in",
-    "mylari.gupta@lobb.in",
-    "alfiz.sha@lobb.in",
-    "riyaz.blr@lobb.in"
-  );
+  ccEmails.push("naveenkumar.m@lobb.in", "mylari.gupta@lobb.in");
   ccEmails = [...new Set(ccEmails.filter(Boolean))];
 
-  // HTML Email Body
   const bodyIndexes = [7, 13, 14, 17, 11, 18, 15, 16, 11, 19, 5, 8, 27];
+  let hasParseError = false;
+
   const htmlBody = `
-    <div style="font-family: Arial, sans-serif; font-size: 14px;">
-      <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+      <p>Dear Branch team,</p>
+      <p><strong>Truck Details</strong></p>
+      <table style="border-collapse: collapse; width: 100%; max-width: 600px; margin-bottom: 16px;">
         ${bodyIndexes.map(i => {
-          const raw = String(data[i] || "").replace(/[\r\n]+/g, " ").trim();
+          let raw = String(data[i] || "").trim().replace(/[\r\n]+/g, " ");
+          if (i === 27) {
+  let commentsHtml = "";
+  try {
+    if (raw.startsWith("Comments:")) raw = raw.substring("Comments:".length).trim();
+    const comments = JSON.parse(raw);
+
+    const staticApproved = [
+      "Nancy Sahu",
+      "Preeti",
+      "Sanno Gaur",
+      "Pratibha",
+      "Abhishek Kumar Dwivedi",
+      "Naveenkumar M",
+      "Mylari Gupta"
+    ];
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const settingsSheet = ss.getSheetByName("settings");
+    const dynamicApproved = settingsSheet.getRange("E21:E")
+      .getValues()
+      .flat()
+      .map(v => v && v.toString().trim())
+      .filter(v => v);
+
+    const approvedNames = [...new Set([...staticApproved, ...dynamicApproved])];
+
+    const approvedComments = Array.isArray(comments)
+      ? comments.filter(c =>
+          approvedNames.some(name => name.toLowerCase() === String(c.commented_by_name || "").toLowerCase())
+        )
+      : [];
+
+    if (approvedComments.length === 0) {
+      notifyUserAndLog("Email not drafted - Please add comments and draft the email.");
+      throw new Error("No approved comments found");
+    }
+
+    commentsHtml = approvedComments.map(c => `
+      <div style="margin-bottom: 8px;">
+        <strong>${c.commented_by_name}</strong>
+        <span style="color: #777; font-size: 12px;">(${c.created_at})</span><br>
+        <span style="white-space: pre-line;">${c.comment}</span>
+      </div>`).join("");
+  } catch (e) {
+    hasParseError = true;
+    return ""; // Skip row entirely
+  }
+
+  return `
+    <tr>
+      <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold; background: #f5f5f5;">Comments</td>
+      <td style="border: 1px solid #ccc; padding: 8px;">${commentsHtml}</td>
+    </tr>`;
+}
+
           if (!raw.includes(":")) return "";
           const [label, ...rest] = raw.split(":");
           const value = rest.join(":").trim();
@@ -71,15 +169,21 @@ function createTrackingEmailAndLog() {
             </tr>`;
         }).join("")}
       </table>
-    </div>
-  `;
+      <p>Provide needed information and/or take suitable action at your side.</p>
+      <p>This is a manually triggered email.<br>
+      For ready reference refer <a href="https://pipe.lobb.in/dashboard/locationAndConsent" target="_blank">lobb pipe link</a>.</p>
+    </div>`;
+
+  if (hasParseError) {
+    notifyUserAndLog("Email not drafted - Please add comments and draft the email.");
+    return;
+  }
 
   GmailApp.createDraft(toEmails, formattedSubject, "", {
     htmlBody,
     cc: ccEmails.join(",")
   });
 
-  // Prepare data to write to emailSheet
   const mapping = {
     27: 1, 26: 3, 14: 4, 15: 5, 4: 6, 12: 7, 11: 8, 16: 9, 17: 10, 8: 11,
     9: 12, 7: 66, 13: 24, 18: 23, 23: 20, 20: 21, 6: 30, 19: 58,
@@ -87,7 +191,7 @@ function createTrackingEmailAndLog() {
   };
 
   const rowValues = new Array(70).fill("");
-  rowValues[1] = new Date(); // Timestamp
+  rowValues[1] = dateOnly;
 
   for (const [srcRow, col] of Object.entries(mapping)) {
     let val = data[srcRow - 1];
@@ -97,26 +201,36 @@ function createTrackingEmailAndLog() {
     rowValues[col - 1] = val;
   }
 
-  // Special combo for col 13
   const val28 = data[27] || "";
   const val7 = data[6] || "";
   const combined = [val28, val7].map(v => v.includes(":") ? v.split(":").slice(1).join(":").trim() : v.trim()).filter(Boolean).join(" - ");
   rowValues[12] = combined;
 
-  const targetRow = emailSheet.getLastRow() + 1;
-  emailSheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+  const runCountCell = activeSheet.getRange(activeRow, 27);
+  let runCount = Number(runCountCell.getValue()) || 0;
+  runCount += 1;
+  runCountCell.setValue(runCount);
 
-  // Update column Z (26th col) in active sheet
-  const user = Session.getActiveUser().getEmail() || "Unknown";
-  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-  activeSheet.getRange("Z1").setValue(`${user} ; ${timestamp}`);
+  const finalLog = `${user} ; ${timestamp} ; run #${runCount}`;
+  colZCell.setValue(finalLog);
+  rowValues[25] = finalLog;
+  rowValues[66] = `R${activeRow}C${activeCol}`;
+
+  emailSheet.appendRow(rowValues);
 
   Logger.log(`Email drafted for: ${toEmails} | CC: ${ccEmails.join(", ")}`);
 }
 
-// Utility
 function extractValidEmail(entry) {
   const text = String(entry || "").trim();
   const email = text.includes(":") ? text.split(":").slice(1).join(":").trim() : text;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+function extractMultipleEmails(entry) {
+  const text = String(entry || "").trim();
+  return text
+    .split(";")
+    .map(e => e.trim())
+    .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
 }
